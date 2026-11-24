@@ -114,6 +114,74 @@ class TestChecks(unittest.TestCase):
         self.assertIn("**Success: 1/1**", text)
         self.assertIn("Checks re-applied", text)
 
+    def test_profiler_fields_and_machine_text(self):
+        hw = "Hardware:\n\n    Hardware Overview:\n\n      Model Name: MacBook Pro\n      Model Identifier: Mac14,6\n" \
+             "      Chip: Apple M2 Max\n      Total Number of Cores: 12 (8 performance and 4 efficiency)\n      Memory: 32 GB\n"
+        gpu = "Graphics/Displays:\n\n    Apple M2 Max:\n\n      Chipset Model: Apple M2 Max\n      Type: GPU\n" \
+              "      Total Number of Cores: 38\n      Metal Support: Metal 3\n"
+        self.assertEqual(run.profiler_field(hw, "Total Number of Cores"), "12 (8 performance and 4 efficiency)")
+        self.assertEqual(run.profiler_field(gpu, "Total Number of Cores"), "38")
+        self.assertIsNone(run.profiler_field(None, "Model Name"))
+        m = {"model": "MacBook Pro", "model_id": "Mac14,6", "chip": "Apple M2 Max", "cpu_cores": "12", "gpu_cores": "38",
+             "memory_gb": 32, "macos": "15.0", "platform": "x"}
+        self.assertEqual(run.machine_text(m), "MacBook Pro (Mac14,6), Apple M2 Max, CPU 12 cores, GPU 38 cores, "
+                                              "32 GB memory, macOS 15.0")
+        self.assertEqual(run.machine_text({"platform": "Linux"}), "Linux, ? GB memory")
+
+    def test_validation_checks(self):
+        q = {"id": "q", "question": "?",
+             "calls": [{"tool": "property_prices", "result": {"insee_code": "21054", "period": "2025"}}],
+             "answer": QUESTION["answer"]}
+        v = {"tool": "property_prices", "args": {"municipality": "Beaune", "period": "2025"}}
+        good = json.dumps({"insee_code": "21054", "period": "2025",
+                           "statistics": {"apartment": {"median_price_per_m2_eur": 2580}}})
+        self.assertEqual(run.check_validation(q, v, False, good), ([], 2580))
+        problems, _ = run.check_validation(q, v, False, good.replace("21054", "21231"))
+        self.assertTrue(problems)
+        problems, _ = run.check_validation(q, v, True, "ERROR: down")
+        self.assertIn("tool error", problems[0])
+        refused = {**v, "expect_error": "does not cover"}
+        self.assertEqual(run.check_validation(q, refused, True, "DVF does not cover Alsace")[0], [])
+        self.assertTrue(run.check_validation(q, refused, False, good)[0])
+
+    def test_holdout2_file(self):
+        data = json.loads((Path(run.HERE) / "questions_holdout2.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(data["questions"]), 16)
+        self.assertEqual(len({q["id"] for q in data["questions"]}), 16)
+        for q in data["questions"]:
+            self.assertTrue(q.get("validate"), q["id"])
+            self.assertTrue(q.get("answer"), q["id"])
+
+    def test_validate_runs_the_tools(self):
+        from unittest import mock
+
+        import anyio
+        from mcp.server.mcpserver import MCPServer
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        srv = MCPServer(name="fake")
+
+        @srv.tool()
+        def property_prices(municipality: str = "", period: str = "") -> str:
+            """Fake DVF."""
+            if municipality == "Colmar":
+                raise ToolError("DVF does not cover Alsace")  # like fr_open_data.server._run
+            return json.dumps({"insee_code": "21054", "period": period,
+                               "statistics": {"apartment": {"median_price_per_m2_eur": 2580}}})
+
+        ok_q = {"id": "ok", "question": "?", "answer": QUESTION["answer"],
+                "calls": [{"tool": "property_prices", "result": {"insee_code": "21054", "period": "2025"}}],
+                "validate": [{"tool": "property_prices", "args": {"municipality": "Beaune", "period": "2025"}}]}
+        refused = {"id": "colmar", "question": "?", "calls": [], "answer": {"no_amount": True},
+                   "validate": [{"tool": "property_prices", "args": {"municipality": "Colmar"}, "expect_error": "does not cover"}]}
+        wrong = {**ok_q, "id": "wrong", "calls": [{"tool": "property_prices", "result": {"insee_code": "99999"}}]}
+        with mock.patch("fr_open_data.server.build_server", return_value=srv), redirect_stdout(StringIO()) as out:
+            self.assertTrue(anyio.run(run.validate, [ok_q, refused]))
+            self.assertFalse(anyio.run(run.validate, [wrong]))
+        self.assertIn("OK   ok: property_prices", out.getvalue())
+        self.assertIn("-> 2580", out.getvalue())
+        self.assertIn("FAIL wrong", out.getvalue())
+
     def test_public_api_error_is_reported_separately(self):
         down = call("property_prices", {"insee_code": "21054", "period": "2025"}, error=True,
                     result="ERROR: data.gouv.fr Tabular API: temporarily unavailable (HTTP 503). Try again later.")

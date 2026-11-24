@@ -17,6 +17,14 @@ The memory used by the model server is not measured: read it in Activity Monitor
 
   python -m bench.run --summarize latest     # rebuild summary.md of the latest results
 
+  python -m bench.run --validate --questions bench/questions_holdout2.json
+                                              # check the questions against the tools, no model
+
+--validate calls the tools directly with the arguments given in each question's 'validate'
+entries and checks that the data needed by the question exists (right municipality and
+period, a figure at the expected place, the expected error for areas DVF does not cover).
+It needs no model and no config, only Internet access to the public APIs.
+
 --summarize re-applies the checks of the current questions file to the stored answers and
 tool results (the model is not run again). The summary written during the run is kept as
 summary-as-run.md, and the new summary says when and with what the checks were re-applied.
@@ -184,9 +192,8 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
         "",
         f"- Label: {meta.get('label') or '(none)'}",
         f"- Model: `{meta['llm']['model']}` at `{meta['llm']['base_url']}`, params `{json.dumps(meta['llm'].get('params') or {}, ensure_ascii=False)}`",
-        f"- Machine: {meta['machine'].get('chip') or meta['machine']['platform']}, "
-        f"{meta['machine'].get('memory_gb') or '?'} GB memory"
-        + (f", macOS {meta['machine']['macos']}" if meta['machine'].get('macos') else ""),
+        f"- Machine: {machine_text(meta['machine'])}",
+        *([f"- Model server: {meta['server_version']}"] if meta.get("server_version") else []),
         f"- Code: french-open-data-mcp {meta['version']}, commit `{meta.get('commit') or '?'}`",
         f"- Questions: `{Path(meta.get('questions_file') or 'questions.json').name}`, "
         f"{len({r['id'] for r in records})} questions",
@@ -297,13 +304,71 @@ def resummarize(path: str, questions_file: str | None) -> None:
     print(f"Rewritten: {root / 'summary.md'}")
 
 
+def check_validation(q: dict[str, Any], v: dict[str, Any], is_error: bool, text: str) -> tuple[list[str], Any]:
+    """Problems found when a question's 'validate' entry was run, and the value the answer will need."""
+    if v.get("expect_error"):
+        ok = is_error and str(v["expect_error"]).lower() in text.lower()
+        return ([] if ok else [f"expected an error containing {v['expect_error']!r}, got: {text[:150]}"]), None
+    if is_error:
+        return [f"tool error: {text[:200]}"], None
+    problems, value = [], None
+    call = ToolCall("", v["tool"], v.get("args") or {}, False, None, "", result=text)
+    for e in q.get("calls") or []:
+        if e["tool"] == v["tool"] and not call_matches(call, {k: x for k, x in e.items() if k != "args"}):
+            problems.append(f"result does not match {e.get('result')}")
+    expect = q.get("answer") or {}
+    spec = expect.get("value_from")
+    if spec and spec["tool"] == v["tool"]:
+        value = value_at(_result(call), spec["path"])
+        if value is None:
+            problems.append(f"no value at {spec['path']}")
+    for s in expect.get("contains") or []:
+        if s.lower() not in text.lower():
+            problems.append(f"{s!r} not in the result")
+    return problems, value
+
+
+async def validate(questions: list[dict[str, Any]]) -> bool:
+    """Run each question's 'validate' entries on the tools (in-process MCP server, no model)."""
+    from mcp import Client
+
+    from fr_open_data.server import build_server
+
+    all_ok = True
+    async with Client(build_server(with_legifrance=False)) as c:
+        for q in questions:
+            entries = q.get("validate") or []
+            if not entries:
+                print(f"SKIP {q['id']}: no 'validate' entry")
+                continue
+            for v in entries:
+                for attempt in range(3):  # public APIs can fail briefly
+                    r = await c.call_tool(v["tool"], v.get("args") or {})
+                    text = "\n".join(getattr(x, "text", "") for x in r.content or [])
+                    if not (r.is_error and any(m in text for m in API_ERROR_MARKERS)):
+                        break
+                    await anyio.sleep(3)
+                problems, value = check_validation(q, v, bool(r.is_error), text)
+                all_ok &= not problems
+                shown = f" -> {value}" if value is not None else (" -> error as expected" if v.get("expect_error") else "")
+                print(f"{'OK  ' if not problems else 'FAIL'} {q['id']}: {v['tool']}({json.dumps(v.get('args') or {}, ensure_ascii=False)})"
+                      f"{shown}{'; ' + '; '.join(problems) if problems else ''}", flush=True)
+    return all_ok
+
+
 # ---------------------------------------------------------------- environment
 
-def _command(*args: str) -> str | None:
+def _command(*args: str, timeout: float = 10) -> str | None:
     try:
-        return subprocess.run(args, capture_output=True, text=True, timeout=10, check=True).stdout.strip() or None
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=True).stdout.strip() or None
     except (OSError, subprocess.SubprocessError):
         return None
+
+
+def profiler_field(text: str | None, key: str) -> str | None:
+    """First "Key: value" of a system_profiler text output."""
+    m = re.search(rf"^\s*{re.escape(key)}:\s*(.+?)\s*$", text or "", re.MULTILINE)
+    return m.group(1) if m else None
 
 
 def machine_info() -> dict[str, Any]:
@@ -313,7 +378,24 @@ def machine_info() -> dict[str, Any]:
         mem = _command("sysctl", "-n", "hw.memsize")
         info["memory_gb"] = round(int(mem) / 2**30) if mem and mem.isdigit() else None
         info["macos"] = _command("sw_vers", "-productVersion")
+        # system_profiler: "Total Number of Cores" is the CPU in SPHardwareDataType, the GPU in SPDisplaysDataType.
+        hw = _command("system_profiler", "SPHardwareDataType", timeout=60)
+        gpu = _command("system_profiler", "SPDisplaysDataType", timeout=60)
+        info["model"] = profiler_field(hw, "Model Name")
+        info["model_id"] = profiler_field(hw, "Model Identifier")
+        info["cpu_cores"] = profiler_field(hw, "Total Number of Cores")
+        info["gpu_cores"] = profiler_field(gpu, "Total Number of Cores")
     return info
+
+
+def machine_text(m: dict[str, Any]) -> str:
+    parts = [" ".join(p for p in (m.get("model"), f"({m['model_id']})" if m.get("model_id") else None) if p),
+             m.get("chip") or m.get("platform"),
+             f"CPU {m['cpu_cores']} cores" if m.get("cpu_cores") else None,
+             f"GPU {m['gpu_cores']} cores" if m.get("gpu_cores") else None,
+             f"{m.get('memory_gb') or '?'} GB memory",
+             f"macOS {m['macos']}" if m.get("macos") else None]
+    return ", ".join(p for p in parts if p)
 
 
 def server_health(llm_cfg: dict[str, Any]) -> Any:
@@ -360,11 +442,16 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--label", help="free text stored with the results, e.g. model file and machine")
     ap.add_argument("--out", default=str(HERE / "results"))
     ap.add_argument("--env-file", default=".env")
+    ap.add_argument("--server-version", help='model server and version, e.g. "mlx-engine (OVHcloud fork) 58083ca"')
     ap.add_argument("--summarize", metavar="DIR", help="only rebuild summary.md of a results folder ('latest' for the last one)")
+    ap.add_argument("--validate", action="store_true", help="only check the questions against the tools (no model)")
     args = ap.parse_args(argv)
     if args.summarize:
         resummarize(args.summarize, args.questions if "--questions" in (argv or sys.argv) else None)
         return
+    if args.validate:
+        questions = json.loads(Path(args.questions).read_text(encoding="utf-8"))["questions"]
+        sys.exit(0 if anyio.run(validate, questions) else 1)
     try:
         envfile.load(args.env_file)
         cfg = load_config(args.config)
@@ -384,6 +471,7 @@ def main(argv: list[str] | None = None) -> None:
     meta = {
         "started": started.isoformat(timespec="seconds"),
         "label": args.label,
+        "server_version": args.server_version,
         "version": __version__,
         "commit": _command("git", "-C", str(HERE.parent), "rev-parse", "--short", "HEAD"),
         "machine": machine_info(),
