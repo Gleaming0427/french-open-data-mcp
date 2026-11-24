@@ -143,6 +143,10 @@ def search(
     """Search companies. postcode, municipality (name), municipality_code and department filter on
     any establishment; naf_code and activity_section apply to the main activity of the company."""
     notes = []
+    if (naf_code or "").strip().upper() in _SECTIONS and not activity_section:
+        # Benchmark 2026-11-24: asked about section J, the model passed naf_code="J".
+        activity_section, naf_code = naf_code.strip().upper(), None
+        notes.append(f"{activity_section!r} is an activity section, not a NAF code: it was used as activity_section.")
     if _NAF_CODE.fullmatch((text or "").strip().upper()) and not naf_code:
         # Seen in a benchmark: a small model put the NAF code in the text, which then matched nothing.
         naf_code, text = text.strip(), ""
@@ -187,6 +191,21 @@ def search(
     }
     if notes:
         out["notes"] = notes
+    return out
+
+
+def count(municipality: str | None = None, naf_code: str | None = None, activity_section: str | None = None,
+          department: str | None = None, postcode: str | None = None, include_closed: bool = False,
+          municipality_code: str | None = None) -> dict[str, Any]:
+    """Number of companies matching filters, without a list (a small model confused the
+    number of companies listed by search with the total)."""
+    if not (municipality or naf_code or activity_section or department or postcode or municipality_code):
+        raise ValueError("Give at least one filter.")
+    r = search("", postcode, department, naf_code, include_closed, 1, municipality_code, activity_section, municipality)
+    out = {"source": r["source"], "filters": r["filters"], "total_results": r["total_results"],
+           "answer": f"{r['total_results']} companies match these filters."}
+    if r.get("notes"):
+        out["notes"] = r["notes"]
     return out
 
 

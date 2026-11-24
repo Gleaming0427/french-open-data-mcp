@@ -108,6 +108,19 @@ class TestCompanies(unittest.TestCase):
         self.assertIn("0 companies match", r["count"])
         self.assertIn("NAF code", r["notes"][0])
 
+    def test_section_given_as_naf_code_and_count(self):
+        with mock.patch.object(companies, "request_json", return_value={"results": [FAKE_RESULT], "total_results": 1989}) as m, \
+                mock.patch.object(municipalities, "request_json", return_value=GEO_DIJON):
+            r = companies.count(municipality="Dijon", naf_code="j")
+        params = m.call_args[0][1]
+        self.assertEqual((params["section_activite_principale"], params.get("activite_principale")), ("J", None))
+        self.assertEqual(params["per_page"], 1)
+        self.assertEqual(r["total_results"], 1989)
+        self.assertNotIn("results", r)
+        self.assertIn("activity section", r["notes"][0])
+        with self.assertRaises(ValueError):
+            companies.count()
+
     def test_search_filters(self):
         with mock.patch.object(companies, "request_json", return_value={"results": [], "total_results": 0}) as m:
             companies.search(municipality_code="31555", naf_code="62.01z, 62.02A", activity_section="j")
@@ -253,6 +266,16 @@ class TestDvfReading(unittest.TestCase):
         self.assertIn("21054 was not used", r["notes"][0])
         r, code = self._prices(municipality="Paris 11e arrondissement")
         self.assertEqual(code, "75111")
+
+    def test_insee_code_as_municipality_and_period_in_words(self):
+        r, code = self._prices(municipality="75115")
+        self.assertEqual(code, "75115")
+        for text, period in (("2026-S1", "2026-S1"), ("premier semestre 2026", "2026-S1"), ("S1 2026", "2026-S1"),
+                             ("2026-01", "2026-S1"), ("second semestre 2021", "2021-S2"), ("2025", "2025")):
+            self.assertEqual(dvf.normalize_period(text), period, text)
+        with mock.patch.object(dvf, "resources_by_period", return_value={"2025": ("rid", "DVF 2025")}), \
+                self.assertRaisesRegex(ValueError, "Published periods"):
+            dvf.property_prices("21054", "2019")
 
     def test_paris_postcode(self):
         r, code = self._prices(insee_code="75011")

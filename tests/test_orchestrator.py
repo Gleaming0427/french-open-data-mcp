@@ -72,6 +72,12 @@ class TestOrchestrator(FakeLlm, unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         os.environ["FAKE_LLM_KEY"] = "secret"
 
+    async def test_sources_listed_once(self):
+        from fr_open_data.orchestrator import sources
+        async with Orchestrator(self.cfg(), {"t": Client(test_server())}) as o:
+            a = await o.answer("repeat bakery")
+        self.assertEqual(sources(a), ["Fake source"])
+
     async def test_full_loop(self):
         for stream in (True, False):
             async with Orchestrator(self.cfg(stream), {"t": Client(test_server())}) as o:
@@ -171,9 +177,10 @@ class TestOrchestrator(FakeLlm, unittest.IsolatedAsyncioTestCase):
     async def test_real_server_lists_tools(self):
         async with Client(build_server(with_legifrance=False)) as c:
             names = sorted(t.name for t in (await c.list_tools()).tools)
-        self.assertEqual(names, ["company_profile", "find_municipality", "property_prices", "search_companies"])
+        self.assertEqual(names, ["company_profile", "count_companies", "find_municipality", "property_prices",
+                                 "search_companies"])
         async with Client(build_server(with_legifrance=True)) as c:
-            self.assertEqual(len((await c.list_tools()).tools), 6)
+            self.assertEqual(len((await c.list_tools()).tools), 7)
             r = await c.call_tool("property_prices", {"insee_code": "75056"})
         self.assertTrue(r.is_error)
         self.assertIn("arrondissement", r.content[0].text)

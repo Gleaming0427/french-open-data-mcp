@@ -94,6 +94,30 @@ def resources_by_period(force: bool = False) -> dict[str, tuple[str, str]]:
     return out
 
 
+_FIRST = r"(?:premier|1er|1ere|1|first|s1|h1)"
+_SECOND = r"(?:second|seconde|deuxieme|2e|2eme|2nd|2|s2|h2)"
+
+
+def normalize_period(period: str | None) -> str:
+    """'2025', '2026-S1', 'S1 2026', '2026-H1', 'premier semestre 2026', '2026-01' -> '2025' or '2026-S1'.
+    Benchmark 2026-11-24: asked for the first half of 2026, the model sent '2026-S2' or '2026-01'."""
+    text = municipalities.normalize(period or "").replace("-", " ")
+    year = re.search(r"\b(19|20)\d{2}\b", text)
+    if not year:
+        return (period or "").strip().upper()
+    y, rest = year.group(0), (text[:year.start()] + " " + text[year.end():]).strip()
+    if not rest:
+        return y
+    month = re.fullmatch(r"(0?[1-9]|1[0-2])", rest)
+    if month:  # '2026-01': a month
+        return f"{y}-S{1 if int(month.group(1)) <= 6 else 2}"
+    if re.search(rf"\b{_FIRST}\b", rest) and not re.search(rf"\b{_SECOND}\b", rest):
+        return f"{y}-S1"
+    if re.search(rf"\b{_SECOND}\b", rest):
+        return f"{y}-S2"
+    return (period or "").strip().upper()
+
+
 def latest_full_year(periods: dict[str, Any]) -> str:
     years = sorted(p for p in periods if p.isdigit())
     if not years:
@@ -225,9 +249,10 @@ def property_prices(insee_code: str | None = None, period: str | None = None,
         raise ValueError("DVF does not cover Alsace, Moselle or Mayotte (departments 57, 67, 68, 976).")
 
     periods = resources_by_period()
-    p = (period or "").strip().upper() or latest_full_year(periods)
+    p = normalize_period(period) or latest_full_year(periods)
     if p not in periods:
-        raise ValueError(f"Period not available. Published periods: {', '.join(sorted(periods))}.")
+        raise ValueError(f"Period {p} is not available. Published periods: {', '.join(sorted(periods))}. "
+                         "Call property_prices again with one of them.")
     rid, title = periods[p]
     rows, complete = read_rows(rid, code)
     if not rows:

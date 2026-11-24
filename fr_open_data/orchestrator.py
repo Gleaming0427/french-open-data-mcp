@@ -35,10 +35,11 @@ from . import envfile, llm
 
 DEFAULT_SYSTEM_PROMPT = (
     "You answer questions using official French public data. Use the tools to get the facts; "
-    "never invent a figure, a name or a legal article. If the tools do not provide the "
-    "information, say so. Call only the tools the question needs, and answer as soon as a "
-    "tool result contains the answer. End by citing the source given by the tool. Answer "
-    "briefly, in the language of the question."
+    "never invent a figure, a name or a legal article. If a tool returns an error that says how "
+    "to correct the call, call the tool again with the corrected arguments. If the tools still do "
+    "not provide the information, say so. Call only the tools the question needs, and answer as "
+    "soon as a tool result contains the answer. End by citing the source given by the tool. "
+    "Answer briefly, in the language of the question."
 )
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 # Sent instead of running a tool once the question has used max_tool_calls.
@@ -295,8 +296,20 @@ def from_config(cfg: dict[str, Any]) -> Orchestrator:
     )
 
 
+def sources(a: Answer) -> list[str]:
+    """Sources of the tool results that returned data, in call order (shown under the answer by
+    the orchestrator itself: in the benchmark, the model named the data source in 34 of 60 answers)."""
+    out: list[str] = []
+    for t in a.tool_calls:
+        if not t.error and t.source and t.source not in out:
+            out.append(t.source)
+    return out
+
+
 def show(a: Answer) -> None:
     print(a.text)
+    if sources(a):
+        print("\nSources (from the tool results): " + "; ".join(sources(a)))
     if a.tool_calls:
         print("\n--- tools called ---")
         for t in a.tool_calls:

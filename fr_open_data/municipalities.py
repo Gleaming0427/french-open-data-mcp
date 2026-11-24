@@ -87,6 +87,9 @@ def resolve(name: str, insee_code: str | None = None) -> tuple[str, str, str | N
     code = arrondissement_code(name)
     if code:
         return code, name.strip(), None
+    if re.fullmatch(r"\d[\dAB]\d{3}", (name or "").strip().upper()):
+        # Benchmark 2026-11-24: the model put the INSEE code (75115) in the name field.
+        return name.strip().upper(), name.strip().upper(), None
     results = _search(name, None, 20)
     exact = [r for r in results if normalize(r["name"]) == normalize(name)]
     if not exact:

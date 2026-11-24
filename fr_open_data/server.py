@@ -62,11 +62,30 @@ def search_companies(
 
     Returns the total number of matching companies (total_results) and, for the first ones:
     SIREN, name, status, creation date, NAF activity code, workforce band, head office and
-    whether the company objects to commercial prospecting. For details, use company_profile.
-    Location filters match companies with at least one establishment there, not only head offices.
+    whether the company objects to commercial prospecting. For details, use company_profile;
+    to answer "how many", use count_companies. Location filters match companies with at least
+    one establishment there, not only head offices.
     """
     return _run(companies.search, text, postcode, department, naf_code, include_closed, limit,
                 municipality_code, activity_section, municipality)
+
+
+def count_companies(
+    municipality: Annotated[str | None, Field(description="Municipality name as written in the question (optional). "
+                                                          "Counts companies with at least one establishment there.")] = None,
+    naf_code: Annotated[str | None, Field(description="NAF/APE code(s) of the main activity, comma-separated, "
+                                                      "in the form 00.00X (optional).")] = None,
+    activity_section: Annotated[str | None, Field(description="Section letter(s) of the main activity, A to U "
+                                                              "(optional), e.g. I = accommodation and food.")] = None,
+    department: Annotated[str | None, Field(description="Department code (optional).")] = None,
+    postcode: Annotated[str | None, Field(description="5-digit postcode(s), comma-separated (optional).")] = None,
+    include_closed: Annotated[bool, Field(description="Include closed companies.")] = False,
+) -> str:
+    """How many French companies match filters (Recherche d'entreprises API). Use it for "how many" questions.
+
+    Returns total_results, the number of matching companies, and the filters applied.
+    """
+    return _run(companies.count, municipality, naf_code, activity_section, department, postcode, include_closed)
 
 
 def company_profile(
@@ -88,7 +107,8 @@ def property_prices(
     municipality: Annotated[str | None, Field(description="Municipality name as written in the question, e.g. Lille "
                                                           "or Lyon 3e arrondissement.")] = None,
     period: Annotated[str | None, Field(
-        description="Year (YYYY) or half-year (YYYY-S1 or YYYY-S2) asked in the question. Default: latest full year."
+        description="Year (YYYY) or half-year (YYYY-S1 = first half, YYYY-S2 = second half) asked in the question. "
+                    "Default: latest full year."
     )] = None,
     insee_code: Annotated[str | None, Field(description="5-character INSEE code (optional, not a postcode). "
                                                         "Prefer 'municipality' with the name.")] = None,
@@ -122,7 +142,7 @@ def read_legifrance_article(
 
 def build_server(with_legifrance: bool | None = None) -> MCPServer:
     srv = MCPServer(name="french-open-data", version=__version__, instructions=INSTRUCTIONS)
-    tools = [search_companies, company_profile, find_municipality, property_prices]
+    tools = [search_companies, count_companies, company_profile, find_municipality, property_prices]
     if legifrance.is_configured() if with_legifrance is None else with_legifrance:
         tools += [search_legifrance, read_legifrance_article]
     for fn in tools:
