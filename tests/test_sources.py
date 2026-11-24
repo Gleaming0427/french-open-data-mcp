@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from fr_open_data import companies, dvf, http, legifrance
+from fr_open_data import companies, dvf, http, legifrance, municipalities
 
 # Fictitious result in the Recherche d'entreprises API format (made-up names).
 FAKE_RESULT = {
@@ -98,6 +98,18 @@ class TestCompanies(unittest.TestCase):
         self.assertEqual(params["etat_administratif"], "A")
         self.assertEqual(r["results"][0]["siren"], "123456789")
 
+    def test_search_filters(self):
+        with mock.patch.object(companies, "request_json", return_value={"results": [], "total_results": 0}) as m:
+            companies.search(municipality_code="31555", naf_code="62.01z, 62.02A", activity_section="j")
+        params = m.call_args[0][1]
+        self.assertEqual(params["code_commune"], "31555")
+        self.assertEqual(params["activite_principale"], "62.01Z,62.02A")
+        self.assertEqual(params["section_activite_principale"], "J")
+        self.assertEqual(params["q"], "")
+        for bad in ({"municipality_code": "Toulouse"}, {"activity_section": "Z"}, {"naf_code": "informatique"}):
+            with self.assertRaises(ValueError):
+                companies.search(**bad)
+
 
 def row(tx, type_code, area=0, value=200000, nature="Vente", parcel="P1", lot=None, rooms=0):
     labels = {1: "Maison", 2: "Appartement", 3: "Dépendance", 4: "Local industriel. commercial ou assimilé"}
@@ -105,6 +117,13 @@ def row(tx, type_code, area=0, value=200000, nature="Vente", parcel="P1", lot=No
             "valeur_fonciere": value, "id_parcelle": parcel, "lot1_numero": lot,
             "code_type_local": type_code, "type_local": labels.get(type_code),
             "surface_reelle_bati": area, "nombre_pieces_principales": rooms, "nom_commune": "Example"}
+
+
+class TestMunicipalities(unittest.TestCase):
+    def test_search_is_ranked_by_population(self):
+        with mock.patch.object(municipalities, "request_json", return_value=[]) as m:
+            municipalities.find("Paris")
+        self.assertEqual(m.call_args[0][1]["boost"], "population")
 
 
 class TestDvf(unittest.TestCase):
@@ -151,6 +170,38 @@ class TestDvf(unittest.TestCase):
         self.assertEqual(sorted(p), ["2021-S2", "2024", "2025", "2026-S1"])
         self.assertEqual(dvf.latest_full_year(p), "2025")
         dvf._resource_cache = None
+
+
+class TestDvfReading(unittest.TestCase):
+    ROWS = [row("m1", 2, 50, 150000)]
+
+    def test_export_is_used(self):
+        with mock.patch.object(dvf, "request_json", return_value=self.ROWS) as m:
+            rows, complete = dvf.read_rows("rid", "21054")
+        self.assertEqual((rows, complete), (self.ROWS, True))
+        self.assertTrue(m.call_args[0][0].endswith("/data/json/"))
+        self.assertEqual(m.call_count, 1)
+
+    def test_too_long_export_falls_back_to_pages(self):
+        too_long = dvf.SourceError("Output is too long", 403)
+        page = {"data": self.ROWS, "links": {"next": "more"}}
+        with mock.patch.object(dvf, "request_json", side_effect=[too_long] + [page] * dvf.MAX_PAGES):
+            rows, complete = dvf.read_rows("rid", "21054")
+        self.assertEqual(len(rows), dvf.MAX_PAGES)
+        self.assertFalse(complete)
+
+    def test_other_errors_are_raised(self):
+        with mock.patch.object(dvf, "request_json", side_effect=dvf.SourceError("down", 503)):
+            with self.assertRaises(dvf.SourceError):
+                dvf.read_rows("rid", "21054")
+
+    def test_partial_data_warning(self):
+        periods = {"2025": ("rid", "DVF 2025")}
+        with mock.patch.object(dvf, "resources_by_period", return_value=periods), \
+                mock.patch.object(dvf, "read_rows", return_value=(self.ROWS, False)):
+            r = dvf.property_prices("21054", "2025")
+        self.assertFalse(r["complete_data"])
+        self.assertIn("Partial data", r["warning"])
 
 
 class TestLegifrance(unittest.TestCase):

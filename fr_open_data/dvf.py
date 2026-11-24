@@ -11,6 +11,13 @@ yearly files are queryable through the Tabular API since 2026-11-18 (dataset
 history). The Tabular API specification documents the `code_commune__exact`
 filter used here.
 
+Rows are read with one request to the Tabular API JSON export
+(`/data/json/`, same filters, all matching rows; source: github.com/datagouv/api-tabular).
+Measured on 2026-11-24: Toulouse 2025, 24,586 rows, 2.3 s, instead of 123 pages of 200
+rows. The export refuses outputs longer than its limit (50,000 rows in the default
+configuration of api-tabular, HTTP 403); the paginated endpoint is then used, up to
+MAX_PAGES, and the result is flagged as partial.
+
 Legal constraints stated by the DGFiP on the source dataset:
 - article R112 A-3 of the Livre des procédures fiscales: use must not allow the
   re-identification, even indirect, of the people concerned;
@@ -43,6 +50,7 @@ from .municipalities import ARRONDISSEMENTS
 
 DATASET_URL = "https://www.data.gouv.fr/api/1/datasets/demandes-de-valeurs-foncieres-geolocalisees/"
 TABULAR_URL = "https://tabular-api.data.gouv.fr/api/resources/{rid}/data/"
+EXPORT_URL = "https://tabular-api.data.gouv.fr/api/resources/{rid}/data/json/"
 SOURCE = "DVF géolocalisées (DGFiP, processed by data.gouv.fr), via the data.gouv.fr Tabular API"
 COLUMNS = [
     "id_mutation", "date_mutation", "nature_mutation", "valeur_fonciere", "id_parcelle",
@@ -93,7 +101,21 @@ def latest_full_year(periods: dict[str, Any]) -> str:
 
 
 def read_rows(rid: str, insee_code: str) -> tuple[list[dict[str, Any]], bool]:
-    """All rows for one municipality (paginated). Returns (rows, complete)."""
+    """All rows for one municipality. Returns (rows, complete)."""
+    params = {"code_commune__exact": insee_code, "columns": ",".join(COLUMNS)}
+    try:
+        rows = request_json(EXPORT_URL.format(rid=rid), params, source_name="data.gouv.fr Tabular API", timeout_s=120)
+    except SourceError as e:
+        if e.status != 403:  # 403: more rows than the export accepts
+            raise
+    else:
+        if isinstance(rows, list):
+            return rows, True
+    return read_pages(rid, insee_code)
+
+
+def read_pages(rid: str, insee_code: str) -> tuple[list[dict[str, Any]], bool]:
+    """Rows for one municipality through the paginated endpoint, up to MAX_PAGES. Returns (rows, complete)."""
     url = TABULAR_URL.format(rid=rid)
     params = {"code_commune__exact": insee_code, "page_size": PAGE_SIZE, "columns": ",".join(COLUMNS)}
     rows: list[dict[str, Any]] = []
@@ -190,7 +212,7 @@ def property_prices(insee_code: str, period: str | None = None) -> dict[str, Any
     if not rows:
         raise SourceError(f"No transactions for municipality {code} in period {p}.")
     sales, n_sales = dwelling_sales(rows)
-    return {
+    out = {
         "source": SOURCE,
         "resource": title,
         "municipality": rows[0].get("nom_commune"),
@@ -205,3 +227,7 @@ def property_prices(insee_code: str, period: str | None = None) -> dict[str, Any
             "the land. Indicative statistic, not an official index."
         ),
     }
+    if not complete:
+        out["warning"] = (f"Partial data: only the first {len(rows)} rows were read. "
+                          "Say that the figures are based on part of the sales.")
+    return out

@@ -29,6 +29,10 @@ UNAVAILABLE = (502, 503, 504)
 class SourceError(RuntimeError):
     """Error returned by a public API (the message is meant for the model and the user)."""
 
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status  # HTTP status, when the API answered with an error
+
 
 def _retry_after(value: str | None, default: float = 1.0) -> float:
     try:
@@ -78,11 +82,11 @@ def request_json(
             except Exception:  # pragma: no cover
                 detail = ""
             if e.code == 429:
-                raise SourceError(f"{source_name}: too many requests (HTTP 429). Try again later.") from e
+                raise SourceError(f"{source_name}: too many requests (HTTP 429). Try again later.", 429) from e
             if e.code in UNAVAILABLE:
                 raise SourceError(f"{source_name}: temporarily unavailable (HTTP {e.code}). Try again later. "
-                                  f"{detail}".strip()) from e
-            raise SourceError(f"{source_name}: HTTP {e.code}. {detail}".strip()) from e
+                                  f"{detail}".strip(), e.code) from e
+            raise SourceError(f"{source_name}: HTTP {e.code}. {detail}".strip(), e.code) from e
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
             if attempt == 1:
                 time.sleep(1.0)

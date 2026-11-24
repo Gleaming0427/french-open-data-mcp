@@ -30,6 +30,9 @@ def find(name: str, postcode: str | None = None, limit: int = 5) -> dict[str, An
             "nom": name.strip(),
             "codePostal": postcode,
             "fields": "nom,code,codesPostaux,codeDepartement,population",
+            # Rank by population: without it, "Paris" returns two "Parisot" before Paris
+            # (checked on 2026-11-24). `boost` is documented in the API's definition.yml.
+            "boost": "population",
             "limit": max(1, min(int(limit), 20)),
         },
         source_name="Découpage administratif API",

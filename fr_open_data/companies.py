@@ -48,6 +48,19 @@ WORKFORCE_BANDS = {
 }
 
 _STATUS = {"A": "active", "C": "closed"}
+_INSEE_CODE = re.compile(r"\d[\dAB]\d{3}")
+_NAF_CODE = re.compile(r"\d{2}\.?\d{2}[A-Z]")
+_SECTIONS = set("ABCDEFGHIJKLMNOPQRSTU")
+
+
+def _code_list(value: str | None, check: Any, message: str) -> str | None:
+    """Normalise a comma-separated list of codes; raise ValueError if one is invalid."""
+    if not (value or "").strip():
+        return None
+    codes = [c.strip().upper() for c in value.split(",") if c.strip()]
+    if not all(check(c) for c in codes):
+        raise ValueError(message)
+    return ",".join(codes)
 
 
 def normalize_siren(value: str) -> str:
@@ -116,20 +129,31 @@ def profile(r: dict[str, Any]) -> dict[str, Any]:
 
 
 def search(
-    text: str,
+    text: str = "",
     postcode: str | None = None,
     department: str | None = None,
     naf_code: str | None = None,
     include_closed: bool = False,
     limit: int = 5,
+    municipality_code: str | None = None,
+    activity_section: str | None = None,
 ) -> dict[str, Any]:
-    if not (text or "").strip() and not (postcode or department or naf_code):
+    """Search companies. postcode, municipality_code and department filter on any establishment;
+    naf_code and activity_section apply to the main activity of the company (legal unit)."""
+    municipality_code = _code_list(municipality_code, _INSEE_CODE.fullmatch,
+                                   "municipality_code: 5-character INSEE codes, e.g. 31555 (use find_municipality).")
+    activity_section = _code_list(activity_section, _SECTIONS.__contains__,
+                                  "activity_section: letters A to U, e.g. J (information and communication).")
+    naf_code = _code_list(naf_code, _NAF_CODE.fullmatch, "naf_code: NAF/APE codes such as 62.02A, comma-separated.")
+    if not (text or "").strip() and not (postcode or department or naf_code or municipality_code or activity_section):
         raise ValueError("Give at least a name, an address or a filter.")
     params = {
         "q": (text or "").strip(),
         "code_postal": postcode,
+        "code_commune": municipality_code,
         "departement": department,
         "activite_principale": naf_code,
+        "section_activite_principale": activity_section,
         "etat_administratif": None if include_closed else "A",
         "per_page": max(1, min(int(limit), MAX_PER_PAGE)),
         "page": 1,

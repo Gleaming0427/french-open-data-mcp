@@ -43,19 +43,28 @@ def _run(fn: Callable[..., Any], *args: Any) -> str:
 
 
 def search_companies(
-    text: Annotated[str, Field(description="Name, acronym, address, director name, SIREN or SIRET.")],
-    postcode: Annotated[str | None, Field(description="5-digit postcode (optional). Filters on any establishment, not only the head office.")] = None,
+    text: Annotated[str, Field(description="Name, acronym, address, director name, SIREN or SIRET (optional when "
+                                           "a filter is given). Do not put an activity or a town here: use the filters.")] = "",
+    municipality_code: Annotated[str | None, Field(description="INSEE municipality code(s), comma-separated, e.g. 31555 "
+                                                               "(optional; use find_municipality). Filters on any establishment.")] = None,
+    postcode: Annotated[str | None, Field(description="5-digit postcode(s), comma-separated (optional). Filters on any establishment.")] = None,
     department: Annotated[str | None, Field(description="Department code, e.g. 21 or 2A (optional).")] = None,
-    naf_code: Annotated[str | None, Field(description="NAF/APE activity code, e.g. 56.10A (optional).")] = None,
+    naf_code: Annotated[str | None, Field(description="NAF/APE code(s) of the main activity, comma-separated, "
+                                                      "e.g. 62.01Z,62.02A (optional).")] = None,
+    activity_section: Annotated[str | None, Field(description="Section letter(s) of the main activity (optional), e.g. "
+                                                              "J = information and communication, I = accommodation and food.")] = None,
     include_closed: Annotated[bool, Field(description="Include closed companies.")] = False,
-    limit: Annotated[int, Field(ge=1, le=25, description="Number of results (1 to 25).")] = 5,
+    limit: Annotated[int, Field(ge=1, le=25, description="Number of results listed (1 to 25).")] = 5,
 ) -> str:
     """Search French companies, associations or public bodies (Recherche d'entreprises API).
 
-    Returns SIREN, name, status, NAF activity code, workforce band, head office and whether
-    the company objects to commercial prospecting. For details, use company_profile.
+    Returns the total number of matching companies (total_results) and, for the first ones:
+    SIREN, name, status, creation date, NAF activity code, workforce band, head office and
+    whether the company objects to commercial prospecting. For details, use company_profile.
+    Location filters match companies with at least one establishment there, not only head offices.
     """
-    return _run(companies.search, text, postcode, department, naf_code, include_closed, limit)
+    return _run(companies.search, text, postcode, department, naf_code, include_closed, limit,
+                municipality_code, activity_section)
 
 
 def company_profile(
