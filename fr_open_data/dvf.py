@@ -46,6 +46,7 @@ from collections import defaultdict
 from typing import Any
 
 from .http import SourceError, request_json
+from . import municipalities
 from .municipalities import ARRONDISSEMENTS
 
 DATASET_URL = "https://www.data.gouv.fr/api/1/datasets/demandes-de-valeurs-foncieres-geolocalisees/"
@@ -175,7 +176,7 @@ def statistics_by_type(sales: list[dict[str, Any]]) -> dict[str, Any]:
     for kind in ("house", "apartment"):
         vs = [v for v in sales if v["type"] == kind]
         if not vs:
-            out[kind] = {"sales_kept": 0}
+            out[kind] = {"sales_kept": 0, "note": f"No {kind} sale was kept: there is no {kind} figure."}
             continue
         m2 = sorted(v["price_m2"] for v in vs)
         q = statistics.quantiles(m2, n=4, method="inclusive") if len(m2) >= 2 else [m2[0]] * 3
@@ -193,10 +194,27 @@ def statistics_by_type(sales: list[dict[str, Any]]) -> dict[str, Any]:
     return out
 
 
-def property_prices(insee_code: str, period: str | None = None) -> dict[str, Any]:
+def property_prices(insee_code: str | None = None, period: str | None = None,
+                    municipality: str | None = None) -> dict[str, Any]:
+    """Statistics for a municipality given by name (municipality) or INSEE code. When both are
+    given, the name wins unless the code is one of the municipalities with that name."""
+    notes = []
     code = re.sub(r"\s", "", insee_code or "").upper()
+    if (municipality or "").strip():
+        resolved, name, note = municipalities.resolve(municipality, code or None)
+        if code and code != resolved:
+            notes.append(f"insee_code {code} was not used: {name} has the INSEE code {resolved}.")
+        code = resolved
+        if note:
+            notes.append(note)
+    if not code:
+        raise ValueError("Give the municipality name (municipality) or its INSEE code (insee_code).")
+    paris = re.fullmatch(r"750(\d{2})", code)
+    if paris and 1 <= int(paris[1]) <= 20:  # no INSEE code starts with 750: a Paris postcode
+        notes.append(f"{code} is a Paris postcode; the INSEE code of that arrondissement, 751{paris[1]}, was used.")
+        code = f"751{paris[1]}"
     if not re.fullmatch(r"\d[\dAB]\d{3}", code):
-        raise ValueError("Expected a 5-character INSEE municipality code (e.g. 21054). Use find_municipality.")
+        raise ValueError("Expected a 5-character INSEE municipality code, or give the municipality name.")
     if code in ARRONDISSEMENTS:
         city, codes = ARRONDISSEMENTS[code]
         raise ValueError(f"DVF publishes {city} per arrondissement: use one of these codes: {', '.join(codes)}.")
@@ -210,7 +228,8 @@ def property_prices(insee_code: str, period: str | None = None) -> dict[str, Any
     rid, title = periods[p]
     rows, complete = read_rows(rid, code)
     if not rows:
-        raise SourceError(f"No transactions for municipality {code} in period {p}.")
+        raise SourceError(f"No transactions for INSEE code {code} in period {p}. Check the code, "
+                          "or give the municipality name instead.")
     sales, n_sales = dwelling_sales(rows)
     out = {
         "source": SOURCE,
@@ -230,4 +249,6 @@ def property_prices(insee_code: str, period: str | None = None) -> dict[str, Any
     if not complete:
         out["warning"] = (f"Partial data: only the first {len(rows)} rows were read. "
                           "Say that the figures are based on part of the sales.")
+    if notes:
+        out["notes"] = notes
     return out

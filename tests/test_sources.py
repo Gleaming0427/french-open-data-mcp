@@ -98,6 +98,15 @@ class TestCompanies(unittest.TestCase):
         self.assertEqual(params["etat_administratif"], "A")
         self.assertEqual(r["results"][0]["siren"], "123456789")
 
+    def test_naf_code_in_text_and_municipality_name(self):
+        with mock.patch.object(companies, "request_json", return_value={"results": [], "total_results": 0}) as m, \
+                mock.patch.object(municipalities, "request_json", return_value=GEO_DIJON):
+            r = companies.search("62.02A", municipality="Dijon")
+        params = m.call_args[0][1]
+        self.assertEqual((params["q"], params["activite_principale"], params["code_commune"]), ("", "62.02A", "21231"))
+        self.assertEqual(r["filters"]["code_commune"], "21231")
+        self.assertIn("NAF code", r["notes"][0])
+
     def test_search_filters(self):
         with mock.patch.object(companies, "request_json", return_value={"results": [], "total_results": 0}) as m:
             companies.search(municipality_code="31555", naf_code="62.01z, 62.02A", activity_section="j")
@@ -119,11 +128,41 @@ def row(tx, type_code, area=0, value=200000, nature="Vente", parcel="P1", lot=No
             "surface_reelle_bati": area, "nombre_pieces_principales": rooms, "nom_commune": "Example"}
 
 
+GEO_DIJON = [{"nom": "Dijon", "code": "21231", "codeDepartement": "21", "population": 160000},
+             {"nom": "Fontaine-lès-Dijon", "code": "21278", "codeDepartement": "21", "population": 9000}]
+GEO_HOMONYMS = [{"nom": "Saint-Denis", "code": "97411", "codeDepartement": "974", "population": 150000},
+                {"nom": "Saint-Denis", "code": "93066", "codeDepartement": "93", "population": 110000}]
+
+
 class TestMunicipalities(unittest.TestCase):
     def test_search_is_ranked_by_population(self):
         with mock.patch.object(municipalities, "request_json", return_value=[]) as m:
             municipalities.find("Paris")
         self.assertEqual(m.call_args[0][1]["boost"], "population")
+
+    def test_arrondissements_by_name(self):
+        for name, code in (("Paris 11e", "75111"), ("Paris 11e arrondissement", "75111"),
+                           ("11e arrondissement de Paris", "75111"), ("Lyon 3", "69383"),
+                           ("Marseille 1er arrondissement", "13201"), ("PARIS 20ème", "75120")):
+            self.assertEqual(municipalities.arrondissement_code(name), code, name)
+        for name in ("Paris", "Paris 21e", "Lyon 10e", "Toulouse 2e"):
+            self.assertIsNone(municipalities.arrondissement_code(name), name)
+
+    def test_find_keeps_exact_matches(self):
+        with mock.patch.object(municipalities, "request_json", return_value=GEO_DIJON):
+            r = municipalities.find("dijon")
+        self.assertEqual([x["insee_code"] for x in r["results"]], ["21231"])
+
+    def test_resolve(self):
+        with mock.patch.object(municipalities, "request_json", return_value=GEO_DIJON):
+            self.assertEqual(municipalities.resolve("Dijon")[:2], ("21231", "Dijon"))
+            with self.assertRaisesRegex(ValueError, "Closest names: Dijon"):
+                municipalities.resolve("Dijonville")
+        with mock.patch.object(municipalities, "request_json", return_value=GEO_HOMONYMS):
+            code, _, note = municipalities.resolve("Saint Denis")
+            self.assertEqual(code, "97411")  # most populated
+            self.assertIn("93066", note)
+            self.assertEqual(municipalities.resolve("Saint-Denis", "93066")[0], "93066")
 
 
 class TestDvf(unittest.TestCase):
@@ -150,7 +189,9 @@ class TestDvf(unittest.TestCase):
         self.assertEqual(s["house"]["median_price_per_m2_eur"], 2000)
         self.assertEqual(s["house"]["median_price_eur"], 200000)
         self.assertIn("warning", s["house"])
-        self.assertEqual(s["apartment"], {"sales_kept": 0})
+        self.assertEqual(s["apartment"]["sales_kept"], 0)
+        self.assertNotIn("median_price_per_m2_eur", s["apartment"])
+        self.assertIn("no apartment figure", s["apartment"]["note"])
 
     def test_rejected_codes_offline(self):
         for code, expected in (("75056", "arrondissement"), ("67482", "Alsace"), ("abc", "INSEE"),
@@ -194,6 +235,28 @@ class TestDvfReading(unittest.TestCase):
         with mock.patch.object(dvf, "request_json", side_effect=dvf.SourceError("down", 503)):
             with self.assertRaises(dvf.SourceError):
                 dvf.read_rows("rid", "21054")
+
+    def _prices(self, **kwargs):
+        periods = {"2025": ("rid", "DVF 2025")}
+        with mock.patch.object(dvf, "resources_by_period", return_value=periods), \
+                mock.patch.object(dvf, "read_rows", return_value=(self.ROWS, True)) as rows, \
+                mock.patch.object(municipalities, "request_json", return_value=GEO_DIJON):
+            r = dvf.property_prices(period="2025", **kwargs)
+        return r, rows.call_args[0][1]
+
+    def test_municipality_name(self):
+        r, code = self._prices(municipality="Dijon")
+        self.assertEqual((code, r["insee_code"]), ("21231", "21231"))
+        r, code = self._prices(municipality="Dijon", insee_code="21054")  # wrong code: the name wins
+        self.assertEqual(code, "21231")
+        self.assertIn("21054 was not used", r["notes"][0])
+        r, code = self._prices(municipality="Paris 11e arrondissement")
+        self.assertEqual(code, "75111")
+
+    def test_paris_postcode(self):
+        r, code = self._prices(insee_code="75011")
+        self.assertEqual(code, "75111")
+        self.assertIn("Paris postcode", r["notes"][0])
 
     def test_partial_data_warning(self):
         periods = {"2025": ("rid", "DVF 2025")}

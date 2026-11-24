@@ -45,12 +45,14 @@ def _run(fn: Callable[..., Any], *args: Any) -> str:
 def search_companies(
     text: Annotated[str, Field(description="Name, acronym, address, director name, SIREN or SIRET (optional when "
                                            "a filter is given). Do not put an activity or a town here: use the filters.")] = "",
-    municipality_code: Annotated[str | None, Field(description="INSEE municipality code(s), comma-separated, e.g. 31555 "
-                                                               "(optional; use find_municipality). Filters on any establishment.")] = None,
+    municipality: Annotated[str | None, Field(description="Municipality name as written in the question (optional), "
+                                                          "e.g. Lille. Filters on any establishment.")] = None,
+    municipality_code: Annotated[str | None, Field(description="INSEE municipality code(s), comma-separated (optional). "
+                                                               "Prefer 'municipality' with the name.")] = None,
     postcode: Annotated[str | None, Field(description="5-digit postcode(s), comma-separated (optional). Filters on any establishment.")] = None,
     department: Annotated[str | None, Field(description="Department code, e.g. 21 or 2A (optional).")] = None,
     naf_code: Annotated[str | None, Field(description="NAF/APE code(s) of the main activity, comma-separated, "
-                                                      "e.g. 62.01Z,62.02A (optional).")] = None,
+                                                      "in the form 00.00X (optional).")] = None,
     activity_section: Annotated[str | None, Field(description="Section letter(s) of the main activity (optional), e.g. "
                                                               "J = information and communication, I = accommodation and food.")] = None,
     include_closed: Annotated[bool, Field(description="Include closed companies.")] = False,
@@ -64,7 +66,7 @@ def search_companies(
     Location filters match companies with at least one establishment there, not only head offices.
     """
     return _run(companies.search, text, postcode, department, naf_code, include_closed, limit,
-                municipality_code, activity_section)
+                municipality_code, activity_section, municipality)
 
 
 def company_profile(
@@ -75,25 +77,30 @@ def company_profile(
 
 
 def find_municipality(
-    name: Annotated[str, Field(description="Municipality name, e.g. Beaune.")],
+    name: Annotated[str, Field(description="Municipality name, e.g. Lille or Lyon 3e arrondissement.")],
     postcode: Annotated[str | None, Field(description="Postcode to disambiguate (optional).")] = None,
 ) -> str:
-    """Find the INSEE code of a French municipality (needed by property_prices)."""
+    """Find the INSEE code of a French municipality. property_prices and search_companies also accept the name."""
     return _run(municipalities.find, name, postcode)
 
 
 def property_prices(
-    insee_code: Annotated[str, Field(description="5-character INSEE municipality code, e.g. 21054.")],
+    municipality: Annotated[str | None, Field(description="Municipality name as written in the question, e.g. Lille "
+                                                          "or Lyon 3e arrondissement.")] = None,
     period: Annotated[str | None, Field(
-        description="Year (e.g. 2024) or half-year (e.g. 2026-S1). Default: latest full year."
+        description="Year (YYYY) or half-year (YYYY-S1 or YYYY-S2) asked in the question. Default: latest full year."
     )] = None,
+    insee_code: Annotated[str | None, Field(description="5-character INSEE code (optional, not a postcode). "
+                                                        "Prefer 'municipality' with the name.")] = None,
 ) -> str:
     """House and apartment sale prices in a French municipality (DVF): medians and quartiles per m².
 
-    Aggregated statistics only (no individual transaction). No data for Alsace, Moselle
-    and Mayotte. Paris, Lyon and Marseille: use an arrondissement code.
+    Give the municipality name. Aggregated statistics only (no individual transaction).
+    No data for Alsace, Moselle and Mayotte. Paris, Lyon and Marseille are published per
+    arrondissement: give the arrondissement, e.g. "Marseille 8e arrondissement".
+    Answer only with figures present in the result; check that its municipality is the one asked.
     """
-    return _run(dvf.property_prices, insee_code, period)
+    return _run(dvf.property_prices, insee_code, period, municipality)
 
 
 def search_legifrance(

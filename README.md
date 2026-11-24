@@ -42,10 +42,10 @@ requests. Installing the model downloads it once from Hugging Face.
 
 | Tool | Data source | Key | Notes |
 |---|---|---|---|
-| `search_companies` | Recherche d'entreprises API (DINUM) | none | Name, address, director, SIREN/SIRET; filters: INSEE municipality code, postcode, department (any establishment), NAF codes and activity section (main activity). Returns the total count and up to 25 companies |
+| `search_companies` | Recherche d'entreprises API (DINUM) | none | Name, address, director, SIREN/SIRET; filters: municipality name or INSEE code, postcode, department (any establishment), NAF codes and activity section (main activity). Returns the filters applied, the total count and up to 25 companies |
 | `company_profile` | same | none | Directors (no birth date or nationality), published financials, labels, collective agreements |
-| `find_municipality` | Découpage administratif API (geo.api.gouv.fr) | none | Name → INSEE code, ranked by population |
-| `property_prices` | DVF géolocalisées via the data.gouv.fr Tabular API | none | Median and quartile price per m², houses and apartments, per municipality and year or half-year |
+| `find_municipality` | Découpage administratif API (geo.api.gouv.fr) | none | Name → INSEE code, ranked by population; arrondissements of Paris, Lyon and Marseille by name ("Paris 11e") |
+| `property_prices` | DVF géolocalisées via the data.gouv.fr Tabular API | none | Median and quartile price per m², houses and apartments, per municipality (name or INSEE code) and year or half-year |
 | `search_legifrance` | Légifrance API (DILA) via PISTE | PISTE OAuth | Only registered when `LEGIFRANCE_CLIENT_ID` and `LEGIFRANCE_CLIENT_SECRET` are set. **Not tested against the live API.** |
 | `read_legifrance_article` | same | PISTE OAuth | Article text and dates of validity. **Not tested against the live API.** |
 
@@ -268,6 +268,17 @@ the model as text, so it can report them instead of guessing.
   API again, and the instructions ask the model to stop once a result answers the question;
   the effect on Olala has not been measured yet. Restrict the tool list (`tools` in
   `mcp_servers`) if the model picks the wrong tool.
+- **First benchmark (2026-11-24, M2 Max 32 GB, Olala q5e6, 24 runs): 12/24.** The main
+  failure: the model called `find_municipality` correctly, then passed another INSEE code to
+  the next tool (for Dijon, twice 21054, the example code then written in the tool
+  description). Two answers gave a figure that was not the one asked: one from another
+  municipality's data while citing Dijon's code, one with no figure in the tool result at
+  all. For Paris 11th it passed the postcode (75011). Since then: `property_prices` and
+  `search_companies` take the municipality name (arrondissements included) and resolve it
+  themselves; example codes were removed from the tool descriptions; a NAF code written in
+  the search text is used as a NAF filter; a Paris postcode is converted to the
+  arrondissement code; an empty statistic says that there is no figure. Not measured again
+  yet.
 - **Not advice.** Answers are not legal, tax or financial advice. Check important
   answers against the cited source.
 

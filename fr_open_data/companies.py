@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from . import municipalities
 from .http import SourceError, request_json
 
 SEARCH_URL = "https://recherche-entreprises.api.gouv.fr/search"
@@ -137,9 +138,22 @@ def search(
     limit: int = 5,
     municipality_code: str | None = None,
     activity_section: str | None = None,
+    municipality: str | None = None,
 ) -> dict[str, Any]:
-    """Search companies. postcode, municipality_code and department filter on any establishment;
-    naf_code and activity_section apply to the main activity of the company (legal unit)."""
+    """Search companies. postcode, municipality (name), municipality_code and department filter on
+    any establishment; naf_code and activity_section apply to the main activity of the company."""
+    notes = []
+    if _NAF_CODE.fullmatch((text or "").strip().upper()) and not naf_code:
+        # Seen in a benchmark: a small model put the NAF code in the text, which then matched nothing.
+        naf_code, text = text.strip(), ""
+        notes.append(f"The text {naf_code!r} is a NAF code: it was used as naf_code.")
+    if (municipality or "").strip():
+        code, name, note = municipalities.resolve(municipality, municipality_code)
+        if municipality_code and municipality_code.strip().upper() != code:
+            notes.append(f"municipality_code {municipality_code} was not used: {name} has the INSEE code {code}.")
+        municipality_code = code
+        if note:
+            notes.append(note)
     municipality_code = _code_list(municipality_code, _INSEE_CODE.fullmatch,
                                    "municipality_code: 5-character INSEE codes, e.g. 31555 (use find_municipality).")
     activity_section = _code_list(activity_section, _SECTIONS.__contains__,
@@ -159,11 +173,15 @@ def search(
         "page": 1,
     }
     d = request_json(SEARCH_URL, params, source_name="Recherche d'entreprises API")
-    return {
+    out = {
         "source": SOURCE,
+        "filters": {k: v for k, v in params.items() if v not in (None, "") and k not in ("per_page", "page")},
         "total_results": d.get("total_results"),
         "results": [summarize(r) for r in d.get("results") or []],
     }
+    if notes:
+        out["notes"] = notes
+    return out
 
 
 def get_profile(siren: str) -> dict[str, Any]:
