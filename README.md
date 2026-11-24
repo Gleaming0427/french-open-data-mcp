@@ -251,13 +251,13 @@ with every answer and tool result, `summary.md`):
 
 | Folder | Code | Questions | Success |
 |---|---|---|---|
+| `20261124-121208` | tools v1 (`8422176`) | `questions.json` | 12/24 |
 | `20261124-132440` | tools v2 (`f31ebe4`) | `questions.json` | 21/24 |
 | `20261124-143946` | tools v2 (`f31ebe4`) | `questions.json` | 20/24 |
 | `20261124-150321` | interrupted run: 14 of 24 runs, no summary | `questions.json` | 11/14 |
 | `20261124-150625` | tools v3 (`729b340`) | `questions.json` | 23/24 |
 | `20261124-152301` | tools v3 (`729b340`) | `questions_holdout.json` | 18/24 as run, 20/24 re-checked |
 
-The first run (tools v1, 12/24, described in Limits) is not in the repository.
 
 ## Configuration (`config.json`)
 

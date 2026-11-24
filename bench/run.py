@@ -245,6 +245,15 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def repo_relative(path: str) -> str:
+    """Path relative to the repository (an absolute path would publish the user's home folder)."""
+    p = Path(path).resolve()
+    try:
+        return str(p.relative_to(HERE.parent))
+    except ValueError:
+        return p.name
+
+
 def _cell(text: Any, limit: int) -> str:
     t = re.sub(r"\s+", " ", str(text or "")).strip().replace("|", "/")
     return t if len(t) <= limit else t[:limit] + "…"
@@ -479,7 +488,7 @@ def main(argv: list[str] | None = None) -> None:
         "server_health": server_health(cfg["llm"]),
         "max_turns": cfg.get("max_turns", 6),
         "runs": args.runs,
-        "questions_file": args.questions,
+        "questions_file": repo_relative(args.questions),
     }
     records = anyio.run(_run, args, cfg, questions, out_dir, meta)
     meta["finished"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
