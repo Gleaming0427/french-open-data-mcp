@@ -224,7 +224,21 @@ request, so they include prompt processing. Runs during which a public API faile
 (network, HTTP 429 or 5xx) are counted and shown separately: they are not the model's
 fault. The script does not measure memory: read the model server's memory use in Activity
 Monitor during the run. `--only id1,id2` runs some questions only. `--questions
-bench/questions_holdout.json` runs the held-out questions (see Limits). The failures table lists
+bench/questions_holdout.json` runs the held-out questions (see Limits).
+
+`bench/questions_holdout2.json` is a second held-out set of 16 questions, written after the
+tools were frozen (commit `1f310a9`). Before running a model on it, check that the data each
+question needs exists, without any model:
+
+```bash
+python -m bench.run --validate --questions bench/questions_holdout2.json
+```
+
+A question that fails validation is corrected or removed before the model run, never after.
+On macOS, `meta.json` and `summary.md` record the Mac model, chip, CPU and GPU core counts
+(`system_profiler`), memory and macOS version. `--server-version` records the model server,
+e.g. `--server-version "mlx-engine (OVHcloud fork) $(git -C ../mlx-engine log -1 --format=%h)"`.
+ The failures table lists
 the calls made and the start of each wrong answer; `python -m bench.run --summarize latest`
 rebuilds `summary.md` of the latest results with the current version of the script and
 re-applies the checks of the questions file to the stored answers (the summary written
@@ -322,6 +336,7 @@ fr_open_data/
   envfile.py         .env reader (standard library)
 bench/run.py         benchmark: fixed questions, checks, results to publish
 bench/questions.json the questions and what each answer must contain
+bench/questions_holdout*.json  held-out questions (not used to adjust the tools)
 tools/fake_llm.py    fake OpenAI-compatible server for tests
 tests/               offline tests (unittest)
 config.example.json
