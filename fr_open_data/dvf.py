@@ -217,7 +217,10 @@ def property_prices(insee_code: str | None = None, period: str | None = None,
         raise ValueError("Expected a 5-character INSEE municipality code, or give the municipality name.")
     if code in ARRONDISSEMENTS:
         city, codes = ARRONDISSEMENTS[code]
-        raise ValueError(f"DVF publishes {city} per arrondissement: use one of these codes: {', '.join(codes)}.")
+        # Benchmark 2026-11-24: given the list of 20 codes, the model once gave up; ask for the name.
+        raise ValueError(f"DVF publishes {city} per arrondissement. Call property_prices again with "
+                         f"municipality=\"{city} <number>e arrondissement\" (arrondissements 1 to {len(codes)}), "
+                         f"or with one of these INSEE codes: {', '.join(codes)}.")
     if department_of(code) in UNCOVERED_DEPARTMENTS:
         raise ValueError("DVF does not cover Alsace, Moselle or Mayotte (departments 57, 67, 68, 976).")
 

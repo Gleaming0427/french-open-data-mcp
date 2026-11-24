@@ -173,11 +173,17 @@ def search(
         "page": 1,
     }
     d = request_json(SEARCH_URL, params, source_name="Recherche d'entreprises API")
+    results = [summarize(r) for r in d.get("results") or []]
+    total = d.get("total_results")
     out = {
         "source": SOURCE,
         "filters": {k: v for k, v in params.items() if v not in (None, "") and k not in ("per_page", "page")},
-        "total_results": d.get("total_results"),
-        "results": [summarize(r) for r in d.get("results") or []],
+        "total_results": total,
+        # Benchmark 2026-11-24: asked "how many", the model twice answered with the number of
+        # companies listed (5) instead of total_results.
+        "count": (f"{total} companies match these filters in total; only the first {len(results)} are listed "
+                  "below. To answer 'how many', use total_results." if total is not None else None),
+        "results": results,
     }
     if notes:
         out["notes"] = notes

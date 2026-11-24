@@ -105,6 +105,7 @@ class TestCompanies(unittest.TestCase):
         params = m.call_args[0][1]
         self.assertEqual((params["q"], params["activite_principale"], params["code_commune"]), ("", "62.02A", "21231"))
         self.assertEqual(r["filters"]["code_commune"], "21231")
+        self.assertIn("0 companies match", r["count"])
         self.assertIn("NAF code", r["notes"][0])
 
     def test_search_filters(self):
@@ -194,7 +195,7 @@ class TestDvf(unittest.TestCase):
         self.assertIn("no apartment figure", s["apartment"]["note"])
 
     def test_rejected_codes_offline(self):
-        for code, expected in (("75056", "arrondissement"), ("67482", "Alsace"), ("abc", "INSEE"),
+        for code, expected in (("75056", 'municipality="Paris <number>e arrondissement"'), ("67482", "Alsace"), ("abc", "INSEE"),
                                ("97608", "Mayotte")):
             with self.assertRaises(ValueError) as ctx:
                 dvf.property_prices(code)
