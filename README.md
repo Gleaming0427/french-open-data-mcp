@@ -257,6 +257,7 @@ with every answer and tool result, `summary.md`):
 | `20261124-150321` | interrupted run: 14 of 24 runs, no summary | `questions.json` | 11/14 |
 | `20261124-150625` | tools v3 (`729b340`) | `questions.json` | 23/24 |
 | `20261124-152301` | tools v3 (`729b340`) | `questions_holdout.json` | 18/24 as run, 20/24 re-checked |
+| `20261124-160832` | tools v3 (`1bdba5b`) | `questions_holdout2.json` | 37/48 |
 
 
 ## Configuration (`config.json`)
@@ -334,6 +335,28 @@ the model as text, so it can report them instead of guessing.
   number listed (5) instead of the total (1,490), once the activity written in the search
   text (0 results), once "0" although the result gave 1,490. Counting from a search result
   is the weak point measured here.
+- **Second held-out set (16 questions, written after the tools were frozen and checked with
+  `--validate` before the run; tools v3, commit `1bdba5b`): 37/48.** Over both held-out sets:
+  57/72 with the corrected name check, 79% (95% Wilson interval 68-87%); 55/72 as scored
+  during the runs. The 3 runs of a question are not independent, so the real uncertainty is
+  larger. By kind of question:
+
+  | Kind | Success | What went wrong |
+  |---|---|---|
+  | Municipality code | 9/9 | |
+  | DVF, town without arrondissements | 18/18 | |
+  | DVF, arrondissement of Paris, Lyon or Marseille | 10/15 | asked for the whole city, put the INSEE code in the name field, or wrote an invalid name; no retry after the error |
+  | DVF, half-year | 1/3 | asked for "2026-S2" or "2026-01" instead of "2026-S1" |
+  | Area DVF does not cover | 9/9 | no invented figure |
+  | Company count | 2/9 | number listed instead of the total; activity section passed as a NAF code; invented SIRENs; "0" although the result gave a total |
+  | Company identity from a SIREN | 8/9 | the failure is a correct answer ("RENAULT") found with `search_companies` instead of `company_profile`, which the checks written before the run count as a failure |
+
+  Among the failed held-out runs, every wrong figure given as an answer was a company count;
+  for property prices, the failed runs said that the data was not available. Output: about
+  1,300 tokens per question, 79.8 tokens/s end to end. Machine: MacBook Pro (Mac14,5),
+  M2 Max with 12 CPU cores and 30 GPU cores, 32 GB, model server mlx-engine (OVHcloud fork)
+  `58083ca`. An INSEE code in the `municipality` field is rejected by the tool; accepting it
+  would be a tool change, to be measured on new questions.
 - **Not advice.** Answers are not legal, tax or financial advice. Check important
   answers against the cited source.
 
