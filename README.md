@@ -244,6 +244,21 @@ rebuilds `summary.md` of the latest results with the current version of the scri
 re-applies the checks of the questions file to the stored answers (the summary written
 during the run is kept as `summary-as-run.md`).
 
+### Raw results
+
+`bench/results/` holds the raw results of the runs on the M2 Max (`meta.json`, `runs.jsonl`
+with every answer and tool result, `summary.md`):
+
+| Folder | Code | Questions | Success |
+|---|---|---|---|
+| `20261124-132440` | tools v2 (`f31ebe4`) | `questions.json` | 21/24 |
+| `20261124-143946` | tools v2 (`f31ebe4`) | `questions.json` | 20/24 |
+| `20261124-150321` | interrupted run: 14 of 24 runs, no summary | `questions.json` | 11/14 |
+| `20261124-150625` | tools v3 (`729b340`) | `questions.json` | 23/24 |
+| `20261124-152301` | tools v3 (`729b340`) | `questions_holdout.json` | 18/24 as run, 20/24 re-checked |
+
+The first run (tools v1, 12/24, described in Limits) is not in the repository.
+
 ## Configuration (`config.json`)
 
 | Key | Meaning |
@@ -295,7 +310,8 @@ the model as text, so it can report them instead of guessing.
   themselves; example codes were removed from the tool descriptions; a NAF code written in
   the search text is used as a NAF filter; a Paris postcode is converted to the
   arrondissement code; an empty statistic says that there is no figure.
-- **Second benchmark (same machine and questions, tools v2): 20/24.** All DVF questions
+- **Second benchmark (same machine and questions, tools v2): 20/24** (a first run with the same
+  code gave 21/24; its 3 failures were all on the company count: once "4", twice no call). All DVF questions
   succeeded except one Paris run, where the model asked for "Paris" without the
   arrondissement and gave up after the error. The company count failed 3/3: the search was
   right, but two answers gave the number of companies listed (5) instead of the total
