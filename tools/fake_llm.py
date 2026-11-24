@@ -42,7 +42,11 @@ def choose_call(question: str, tools: list[str]) -> tuple[str, dict[str, Any]]:
 
 
 def chunk(delta: dict[str, Any] | None = None, finish: str | None = None) -> dict[str, Any]:
-    return {"object": "chat.completion.chunk", "choices": [{"index": 0, "delta": delta or {}, "finish_reason": finish}]}
+    out: dict[str, Any] = {"object": "chat.completion.chunk",
+                           "choices": [{"index": 0, "delta": delta or {}, "finish_reason": finish}]}
+    if finish:  # like mlx-engine, token counts come with the last chunk
+        out["usage"] = {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}
+    return out
 
 
 class Handler(BaseHTTPRequestHandler):

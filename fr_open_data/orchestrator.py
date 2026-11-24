@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -61,6 +62,8 @@ class ToolCall:
     source: str | None
     excerpt: str
     repeated: bool = False  # identical to an earlier successful call: not run again
+    seconds: float = 0.0  # time spent running the tool
+    result: str = ""  # text sent to the model
 
 
 @dataclass
@@ -69,6 +72,7 @@ class Answer:
     tool_calls: list[ToolCall] = field(default_factory=list)
     turns: int = 0
     error: str | None = None
+    llm_calls: list[dict[str, Any]] = field(default_factory=list)  # per model request: seconds, usage
 
 
 def client_from_config(s: dict[str, Any]) -> Client:
@@ -158,7 +162,7 @@ class Orchestrator:
         payload.update(self.cfg.get("params") or {})
         if self.tools:
             payload["tools"] = self.tools
-            payload["tool_choice"] = "auto"  # the value shared by the Olala API, vLLM, mlx-engine and Ollama
+            payload["tool_choice"] = "auto"  # accepted by mlx-engine and Ollama
         key = os.environ.get(self.cfg["api_key_env"]) if self.cfg.get("api_key_env") else None
         return llm.chat(self.cfg["base_url"], payload, key, self.cfg.get("timeout_s", 300), self.cfg.get("stream", True))
 
@@ -171,18 +175,21 @@ class Orchestrator:
         if args is None:
             text = "ERROR: invalid JSON arguments. Call the tool again with a valid JSON object."
             return text, ToolCall(server, original, arguments, True, None, text)
+        t0 = time.perf_counter()
         try:
             res = await self.clients[server].call_tool(original, args)
         except Exception as e:  # transport failure: report it to the model instead of crashing
             text = f"ERROR: MCP server {server!r} failed: {type(e).__name__}: {e}"
-            return text, ToolCall(server, original, args, True, None, text[:200])
+            return text, ToolCall(server, original, args, True, None, text[:200],
+                                  seconds=time.perf_counter() - t0, result=text)
         text = result_text(res)
         source = source_of(text)
         if res.is_error:
             text = "ERROR: " + text
         if len(text) > self.max_result_chars:
             text = text[: self.max_result_chars] + " [...truncated]"
-        return text, ToolCall(server, original, args, bool(res.is_error), source, text[:200])
+        return text, ToolCall(server, original, args, bool(res.is_error), source, text[:200],
+                              seconds=time.perf_counter() - t0, result=text)
 
     async def answer(self, question: str) -> Answer:
         messages: list[dict[str, Any]] = [{"role": "system", "content": self.system_prompt},
@@ -192,6 +199,7 @@ class Orchestrator:
         for turn in range(1, self.max_turns + 1):
             out.turns = turn
             reply = await anyio.to_thread.run_sync(self._request, messages)
+            out.llm_calls.append({"seconds": reply.total_s, "usage": reply.usage, "finish_reason": reply.finish_reason})
             if reply.error and not reply.truncated:
                 out.error = reply.error
                 out.text = f"Model error: {reply.error}"
@@ -217,7 +225,7 @@ class Orchestrator:
                     # Small models sometimes repeat a call (a DVF query takes several seconds):
                     # send back the earlier result instead of querying the API again.
                     text, trace = done[key]
-                    text, trace = REPEATED_CALL_NOTE + text, replace(trace, repeated=True)
+                    text, trace = REPEATED_CALL_NOTE + text, replace(trace, repeated=True, seconds=0.0)
                 else:
                     text, trace = await self._execute(c["name"], c["arguments"])
                     if key and not trace.error:
@@ -225,12 +233,23 @@ class Orchestrator:
                 out.tool_calls.append(trace)
                 messages.append({"role": "tool", "tool_call_id": c["id"], "content": text})
         out.text = "Maximum number of tool calls reached without a final answer."
+        out.error = "max_turns"
         return out
 
 
 def load_config(path: str) -> dict[str, Any]:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def check_config(cfg: dict[str, Any]) -> None:
+    """Raise ValueError if the configuration cannot be used (e.g. an old config with remote servers)."""
+    if not isinstance(cfg.get("llm"), dict) or not cfg["llm"].get("base_url"):
+        raise ValueError("'llm.base_url' is missing.")
+    for s in cfg.get("mcp_servers") or []:
+        if not s.get("command"):
+            raise ValueError(f"MCP server {s.get('name')!r} has no 'command'. Only servers started on "
+                             "this machine over stdio are supported (copy config.example.json again).")
 
 
 def from_config(cfg: dict[str, Any]) -> Orchestrator:
@@ -302,10 +321,10 @@ def main(argv: list[str] | None = None) -> None:
     if not os.path.exists(args.config):
         sys.exit(f"Config not found: {args.config} (copy config.example.json)")
     cfg = load_config(args.config)
-    for s in cfg.get("mcp_servers") or []:
-        if not s.get("command"):
-            sys.exit(f"{args.config}: MCP server {s.get('name')!r} has no 'command'. Only servers started on "
-                     "this machine over stdio are supported (copy config.example.json again).")
+    try:
+        check_config(cfg)
+    except ValueError as e:
+        sys.exit(f"{args.config}: {e}")
     anyio.run(_main, args, cfg)
 
 

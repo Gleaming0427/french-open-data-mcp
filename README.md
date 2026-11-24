@@ -42,10 +42,10 @@ requests. Installing the model downloads it once from Hugging Face.
 
 | Tool | Data source | Key | Notes |
 |---|---|---|---|
-| `search_companies` | Recherche d'entreprises API (DINUM) | none | Name, address, director, SIREN/SIRET; filters: postcode, department, NAF code |
+| `search_companies` | Recherche d'entreprises API (DINUM) | none | Name, address, director, SIREN/SIRET; filters: INSEE municipality code, postcode, department (any establishment), NAF codes and activity section (main activity). Returns the total count and up to 25 companies |
 | `company_profile` | same | none | Directors (no birth date or nationality), published financials, labels, collective agreements |
-| `find_municipality` | Découpage administratif API (geo.api.gouv.fr) | none | Name → INSEE code |
-| `property_prices` | DVF géolocalisées via the data.gouv.fr Tabular API | none | Median and quartile price per m², houses and apartments, per municipality and year |
+| `find_municipality` | Découpage administratif API (geo.api.gouv.fr) | none | Name → INSEE code, ranked by population |
+| `property_prices` | DVF géolocalisées via the data.gouv.fr Tabular API | none | Median and quartile price per m², houses and apartments, per municipality and year or half-year |
 | `search_legifrance` | Légifrance API (DILA) via PISTE | PISTE OAuth | Only registered when `LEGIFRANCE_CLIENT_ID` and `LEGIFRANCE_CLIENT_SECRET` are set. **Not tested against the live API.** |
 | `read_legifrance_article` | same | PISTE OAuth | Article text and dates of validity. **Not tested against the live API.** |
 
@@ -204,6 +204,26 @@ The model must support tool calling.
 Command: `python -m fr_open_data.server` (run from the virtual environment). The server
 speaks MCP over stdio.
 
+### 7. Measure (benchmark)
+
+`bench/run.py` asks the fixed questions of `bench/questions.json` several times and checks
+each answer: the expected tool calls must succeed with the expected arguments, and the
+answer must contain the figure returned by the tool in that run (or, for Strasbourg, which
+DVF does not cover, no euro amount). With the model server running:
+
+```bash
+python -m bench.run --config config.json --runs 3 --label "Olala q5e6, MacBook Pro M2 Max"
+```
+
+Results go to `bench/results/<date>-<time>/`: `summary.md` (tables), `runs.jsonl` (one line
+per run, with the full answer and the tools called) and `meta.json` (machine, model,
+configuration, commit). Token counts come from the model server when it reports them
+(mlx-engine does, at the end of each response); tokens/s are computed over the whole model
+request, so they include prompt processing. Runs during which a public API failed
+(network, HTTP 429 or 5xx) are counted and shown separately: they are not the model's
+fault. The script does not measure memory: read the model server's memory use in Activity
+Monitor during the run. `--only id1,id2` runs some questions only.
+
 ## Configuration (`config.json`)
 
 | Key | Meaning |
@@ -227,8 +247,10 @@ the model as text, so it can report them instead of guessing.
   specification and response parsing is defensive. Verify before relying on it.
 - **DVF statistics are an approximation.** Only sales of a single dwelling are kept, and
   the price per m² of houses includes the land. It is not an official index.
-  A large arrondissement takes about 30 s (Paris 11th, 2025: about 6,400 rows, measured
-  during development).
+  The rows of a municipality are read in one request to the Tabular API JSON export:
+  Toulouse 2025, 24,586 rows, took 2.3 s on 2026-11-24. Beyond the export limit (50,000
+  rows in api-tabular's default configuration), the tool reads at most 12,000 rows and
+  says that the figures are partial.
 - **The data.gouv.fr Tabular API can be briefly unavailable.** On 2026-11-24 it answered
   HTTP 503 (PostgREST error PGRST002) for the DVF 2025 file while the other DVF files
   answered; the same query worked again shortly after. Each request is retried once; if it
@@ -259,6 +281,8 @@ fr_open_data/
   llm.py             streaming chat client (standard library)
   http.py            HTTP helper (User-Agent, one retry on 429/502/503/504 and network errors)
   envfile.py         .env reader (standard library)
+bench/run.py         benchmark: fixed questions, checks, results to publish
+bench/questions.json the questions and what each answer must contain
 tools/fake_llm.py    fake OpenAI-compatible server for tests
 tests/               offline tests (unittest)
 config.example.json
@@ -276,5 +300,7 @@ config.example.json
 - Légifrance on data.gouv.fr: https://www.data.gouv.fr/dataservices/legifrance
 - Légifrance API specification: https://github.com/betagouv/api_gouv_swaggers (`swaggers/api-legifrance-v2.json`)
 - PostgREST error codes: https://github.com/PostgREST/postgrest/blob/main/docs/references/errors.rst
+- data.gouv.fr Tabular API source code (JSON export, limits): https://github.com/datagouv/api-tabular
+- Découpage administratif API specification (`boost` parameter): https://github.com/datagouv/api-geo (`definition.yml`)
 - Ollama, tool calling and OpenAI compatibility: https://docs.ollama.com/capabilities/tool-calling and https://docs.ollama.com/api/openai-compatibility
 - MCP Python SDK (v2): https://pypi.org/project/mcp/
