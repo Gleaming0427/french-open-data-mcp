@@ -238,8 +238,8 @@ A question that fails validation is corrected or removed before the model run, n
 On macOS, `meta.json` and `summary.md` record the Mac model, chip, CPU and GPU core counts
 (`system_profiler`), memory and macOS version. `--server-version` records the model server,
 e.g. `--server-version "mlx-engine (OVHcloud fork) $(git -C ../mlx-engine log -1 --format=%h)"`.
- The failures table lists
-the calls made and the start of each wrong answer; `python -m bench.run --summarize latest`
+
+The failures table lists the calls made and the start of each wrong answer; `python -m bench.run --summarize latest`
 rebuilds `summary.md` of the latest results with the current version of the script and
 re-applies the checks of the questions file to the stored answers (the summary written
 during the run is kept as `summary-as-run.md`).
