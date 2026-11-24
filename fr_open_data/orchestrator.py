@@ -4,6 +4,9 @@
   python -m fr_open_data.orchestrator --config config.json --question "Apartment prices in Beaune in 2025?"
   python -m fr_open_data.orchestrator --config config.json        # interactive mode
 
+API keys come from environment variables, or from a .env file in the current
+directory (see .env.example); a variable already set in the terminal wins.
+
 Loop: the model receives the question and the list of MCP tools; when it asks for
 a tool, the orchestrator runs it on the matching MCP server and sends the result
 back; this repeats until an answer without tool calls (or `max_turns`).
@@ -25,7 +28,7 @@ import anyio
 from mcp import Client, StdioServerParameters
 from mcp.client.stdio import get_default_environment
 
-from . import llm
+from . import envfile, llm
 
 DEFAULT_SYSTEM_PROMPT = (
     "You answer questions using official French public data. Use the tools to get the facts; "
@@ -235,6 +238,10 @@ def show(a: Answer) -> None:
 
 async def _main(args: argparse.Namespace) -> None:
     cfg = load_config(args.config)
+    key_env = cfg["llm"].get("api_key_env")
+    if key_env and not os.environ.get(key_env):
+        print(f"warning: {key_env} is not set (environment or {args.env_file}): requests are sent without a key",
+              file=sys.stderr)
     async with from_config(cfg) as orch:
         if args.check:
             print("MCP tools:", ", ".join(orch.routes) or "(none)")
@@ -268,7 +275,12 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--config", default="config.json")
     ap.add_argument("--question")
     ap.add_argument("--check", action="store_true", help="test the connection to the model and the MCP servers")
+    ap.add_argument("--env-file", default=".env", help="file of KEY=VALUE lines read at startup (default: .env)")
     args = ap.parse_args(argv)
+    try:
+        envfile.load(args.env_file)
+    except ValueError as e:
+        sys.exit(f"{args.env_file}: {e}")
     if not os.path.exists(args.config):
         sys.exit(f"Config not found: {args.config} (copy config.example.json)")
     anyio.run(_main, args)

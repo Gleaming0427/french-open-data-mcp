@@ -1,5 +1,5 @@
 {
-  "_note": "Copy to config.json. 'llm': an OpenAI-compatible model with tool calling. 'mcp_servers': servers started as subprocesses ('command') or reached over HTTP ('url'). API keys are read from environment variables, never from this file.",
+  "_note": "Copy to config.json. 'llm': an OpenAI-compatible model with tool calling. 'mcp_servers': servers started as subprocesses ('command') or reached over HTTP ('url'). API keys are read from environment variables or from a .env file (see .env.example), never from this file.",
   "llm": {
     "base_url": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
     "api_key_env": "OLALA_API_KEY",

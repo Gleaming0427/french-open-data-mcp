@@ -8,6 +8,9 @@ Over HTTP, if MCP_TOKEN is set, every request must carry
 "Authorization: Bearer <MCP_TOKEN>" (the "Bearer" option in Open WebUI).
 To expose it on the Internet, put it behind an HTTPS reverse proxy and declare
 the domain name with --domain (DNS rebinding protection from the MCP SDK).
+
+MCP_TOKEN and the LEGIFRANCE_* variables can also be set in a .env file in the
+current directory (see .env.example); a variable already set in the environment wins.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ import argparse
 import hmac
 import json
 import os
+import sys
 from typing import Annotated, Any, Callable
 
 from mcp.server.mcpserver import MCPServer
@@ -24,7 +28,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp_types import ToolAnnotations
 from pydantic import Field
 
-from . import __version__, companies, dvf, legifrance, municipalities
+from . import __version__, companies, dvf, envfile, legifrance, municipalities
 from .http import SourceError
 
 INSTRUCTIONS = (
@@ -154,7 +158,12 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--domain", action="append", default=[], help="accepted public domain name (repeatable)")
+    ap.add_argument("--env-file", default=".env", help="file of KEY=VALUE lines read at startup (default: .env)")
     args = ap.parse_args(argv)
+    try:
+        envfile.load(args.env_file)
+    except ValueError as e:
+        sys.exit(f"{args.env_file}: {e}")
 
     srv = build_server()
     if not args.http:

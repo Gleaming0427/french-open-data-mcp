@@ -136,11 +136,17 @@ servers. They make no network calls.
 
 ### 2. With the Olala API
 
-Create an API key for the Olala API (see the "Getting started" guide linked from the model card), then:
+Create an API key for the Olala API (see the "Getting started" guide linked from the model card),
+then put it in a `.env` file at the root of the project:
 
 ```bash
-export OLALA_API_KEY=your-key
+cp .env.example .env
 ```
+
+Open `.env` in an editor and fill in the line `OLALA_API_KEY=`. The file is listed in
+`.gitignore`, so it is not committed. Both the orchestrator and the server read `.env` from
+the current directory at startup (another file: `--env-file PATH`). A variable already set
+in the terminal (`export OLALA_API_KEY=...`) takes precedence over the file. Then:
 
 ```bash
 cp config.example.json config.json
@@ -170,6 +176,8 @@ OpenAI-compatible API at `http://localhost:11434/v1` and supports tools and stre
 export MCP_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
 ```
 
+(or set `MCP_TOKEN` in `.env`)
+
 ```bash
 fr-open-data-server --http --host 127.0.0.1 --port 8765 --domain mcp.example.org
 ```
@@ -188,7 +196,7 @@ Command: `python -m fr_open_data.server` (run from the virtual environment).
 | Key | Meaning |
 |---|---|
 | `llm.base_url`, `llm.model` | OpenAI-compatible endpoint and model id |
-| `llm.api_key_env` | Name of the environment variable holding the key (never the key itself) |
+| `llm.api_key_env` | Name of the environment variable holding the key (never the key itself); it can be set in `.env` |
 | `llm.stream` | `true` by default (the Olala MLX server only accepts streaming) |
 | `llm.params` | Added to every request (sampling, reasoning effort) |
 | `mcp_servers[].command` | Start the server as a subprocess (stdio) |
@@ -226,9 +234,11 @@ fr_open_data/
   orchestrator.py    tool loop between an OpenAI-compatible LLM and MCP servers
   llm.py             streaming chat client (standard library)
   http.py            HTTP helper (User-Agent, 429/Retry-After, one retry)
+  envfile.py         .env reader (standard library)
 tools/fake_llm.py    fake OpenAI-compatible server for tests
 tests/               offline tests (unittest)
 config.example.json
+.env.example         template for .env (API keys, tokens)
 ```
 
 ## Sources (consulted 2026-11-23/24)
