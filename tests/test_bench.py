@@ -44,6 +44,21 @@ class TestChecks(unittest.TestCase):
         self.assertIsNone(run.cites_source("Pas de données.", ["ERROR: not covered"]))
         self.assertIsNone(run.cites_source("x", []))
 
+    def test_truncated_result_keeps_leading_fields(self):
+        full = json.dumps({"source": "S", "filters": {"code_commune": "33063", "activite_principale": "56.10A"},
+                           "total_results": 1490, "results": [{"name": "X" * 50}] * 200})
+        cut = full[:8000] + " [...truncated]"
+        fields = run.leading_fields(cut)
+        self.assertEqual(fields["total_results"], 1490)
+        self.assertEqual(fields["filters"]["code_commune"], "33063")
+        self.assertNotIn("results", fields)
+        q = {"id": "c", "question": "?",
+             "calls": [{"tool": "search_companies", "result": {"filters.code_commune": "33063",
+                                                                "filters.activite_principale": "56.10A"}}],
+             "answer": {"value_from": {"tool": "search_companies", "path": "total_results"}}}
+        r = run.evaluate(q, Answer(text="1490 entreprises actives.", tool_calls=[call("search_companies", {}, result=cut)]))
+        self.assertTrue(r["success"], r)
+
     def test_value_at(self):
         self.assertEqual(run.value_at({"a": [{"b": 3}]}, "a.0.b"), 3)
         self.assertIsNone(run.value_at({"a": []}, "a.0.b"))

@@ -92,11 +92,42 @@ def _same(actual: Any, expected: Any) -> bool:
     return norm(actual) == norm(expected)
 
 
+_KEY_SEP = re.compile(r"\s*,?\s*")
+_COLON = re.compile(r"\s*:\s*")
+
+
+def leading_fields(text: str) -> dict[str, Any]:
+    """Complete top-level fields of a JSON object cut short (the orchestrator truncates tool
+    results to max_result_chars, which can cut a long company list): every field before the
+    cut is kept, the field being cut and those after it are lost."""
+    decoder, out = json.JSONDecoder(), {}
+    i = (text or "").find("{")
+    if i < 0:
+        return out
+    i += 1
+    while True:
+        i = _KEY_SEP.match(text, i).end()
+        try:
+            key, i = decoder.raw_decode(text, i)
+        except json.JSONDecodeError:
+            return out
+        colon = _COLON.match(text, i)
+        if not isinstance(key, str) or not colon:
+            return out
+        try:
+            value, i = decoder.raw_decode(text, colon.end())
+        except json.JSONDecodeError:
+            return out
+        out[key] = value
+
+
 def _result(call: ToolCall) -> dict[str, Any]:
     try:
         d = json.loads(call.result)
     except (json.JSONDecodeError, TypeError):
-        return {}
+        # Found in the first Ollama run: a search with limit=25 exceeded max_result_chars; the
+        # model read total_results at the top of the cut text, the check could not parse it.
+        return leading_fields(call.result) if isinstance(call.result, str) else {}
     return d if isinstance(d, dict) else {}
 
 
@@ -123,10 +154,7 @@ def cites_source(answer: str, results: list[str]) -> bool | None:
     None when no successful result has a source this check knows."""
     words = []
     for text in results:
-        try:
-            source = json.loads(text).get("source") if text.strip().startswith("{") else None
-        except (json.JSONDecodeError, AttributeError):
-            source = None
+        source = _result(ToolCall("", "", {}, False, None, "", result=text)).get("source")
         for key, kws in SOURCE_WORDS.items():
             if source and key in _plain(source):
                 words += kws
@@ -152,10 +180,7 @@ def evaluate(q: dict[str, Any], a: Answer) -> dict[str, Any]:
         results = [c for c in a.tool_calls if c.tool == spec["tool"] and not c.error]
         value = None
         if results:
-            try:
-                value = value_at(json.loads(results[-1].result), spec["path"])
-            except (json.JSONDecodeError, TypeError):
-                value = None
+            value = value_at(_result(results[-1]), spec["path"])
         if not results:
             answer_ok, detail = False, f"no successful {spec['tool']} call"
         elif value is None:
