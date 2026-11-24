@@ -1,7 +1,11 @@
 """Offline tests of the benchmark checks (bench/run.py)."""
 
 import json
+import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
+from pathlib import Path
 
 from bench import run
 from fr_open_data.orchestrator import Answer, ToolCall
@@ -56,6 +60,40 @@ class TestChecks(unittest.TestCase):
         refused = call("property_prices", {"insee_code": "67482"}, error=True, result="ERROR: not covered")
         self.assertTrue(run.evaluate(q, Answer(text="DVF ne couvre pas l'Alsace.", tool_calls=[refused]))["success"])
         self.assertFalse(run.evaluate(q, Answer(text="Environ 3 000 € le m².", tool_calls=[refused]))["success"])
+
+    def test_result_fields_and_unneeded_calls(self):
+        q = {"id": "q", "question": "?", "allowed": ["find_municipality"],
+             "calls": [{"tool": "property_prices", "result": {"insee_code": "21054", "period": "2025"}}],
+             "answer": QUESTION["answer"]}
+        result = json.dumps({"insee_code": "21054", "period": "2025",
+                             "statistics": {"apartment": {"median_price_per_m2_eur": 2580}}})
+        good = [call("find_municipality", {"name": "Beaune"}, result="{}"),
+                call("property_prices", {"insee_code": "21054"}, result=result),  # default period
+                call("search_companies", {"text": "Beaune"}, result="{}")]
+        r = run.evaluate(q, Answer(text="2 580 €", tool_calls=good))
+        self.assertTrue(r["success"], r)
+        self.assertEqual(r["calls_extra"], 1)  # search_companies only
+        other_year = call("property_prices", {"insee_code": "21054"}, result=result.replace("2025", "2024"))
+        r = run.evaluate(q, Answer(text="2 580 €", tool_calls=[other_year]))
+        self.assertEqual(r["missing_calls"], ["property_prices"])
+        self.assertEqual(run.evaluate(q, Answer(text="?", tool_calls=[]))["answer_detail"], "no successful property_prices call")
+        self.assertTrue(run._same("6202a", "62.02A"))
+
+    def test_resummarize_shows_calls_made(self):
+        a = Answer(text="Je ne sais pas.", tool_calls=[call("property_prices", {"insee_code": "75056"}, error=True,
+                                                            result="ERROR: arrondissement")])
+        record = run.run_record(QUESTION, 1, a, 2.0)
+        meta = {"started": "x", "version": "0.1.0", "runs": 1, "llm": {"model": "m", "base_url": "u"},
+                "machine": {"platform": "test"}}
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "meta.json").write_text(json.dumps(meta))
+            (Path(d) / "runs.jsonl").write_text(json.dumps(record) + "\n")
+            (Path(d) / "q.json").write_text(json.dumps({"questions": [QUESTION]}))
+            with redirect_stdout(StringIO()):
+                run.resummarize(d, str(Path(d) / "q.json"))
+            text = (Path(d) / "summary.md").read_text()
+        self.assertIn("property_prices(insee_code=75056) ERROR", text)
+        self.assertIn("Je ne sais pas.", text)
 
     def test_public_api_error_is_reported_separately(self):
         down = call("property_prices", {"insee_code": "21054", "period": "2025"}, error=True,

@@ -207,9 +207,10 @@ speaks MCP over stdio.
 ### 7. Measure (benchmark)
 
 `bench/run.py` asks the fixed questions of `bench/questions.json` several times and checks
-each answer: the expected tool calls must succeed with the expected arguments, and the
-answer must contain the figure returned by the tool in that run (or, for Strasbourg, which
-DVF does not cover, no euro amount). With the model server running:
+each answer: the expected tool calls must succeed with the expected arguments (for DVF: the
+result must be for the right municipality and period), and the answer must contain the
+figure returned by the tool in that run (or, for Strasbourg, which DVF does not cover, no
+euro amount). With the model server running:
 
 ```bash
 python -m bench.run --config config.json --runs 3 --label "Olala q5e6, MacBook Pro M2 Max"
@@ -222,7 +223,9 @@ configuration, commit). Token counts come from the model server when it reports 
 request, so they include prompt processing. Runs during which a public API failed
 (network, HTTP 429 or 5xx) are counted and shown separately: they are not the model's
 fault. The script does not measure memory: read the model server's memory use in Activity
-Monitor during the run. `--only id1,id2` runs some questions only.
+Monitor during the run. `--only id1,id2` runs some questions only. The failures table lists
+the calls made and the start of each wrong answer; `python -m bench.run --summarize latest`
+rebuilds `summary.md` of the latest results with the current version of the script.
 
 ## Configuration (`config.json`)
 

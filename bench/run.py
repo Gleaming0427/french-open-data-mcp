@@ -3,9 +3,10 @@
   python -m bench.run --config config.json --runs 3 --label "Olala q5e6, MacBook Pro M2 Max"
 
 For each run of each question (bench/questions.json), it records the tools called, their
-arguments and duration, the model requests (duration and token counts when the server
-reports them), and checks:
-- that the expected tool calls succeeded with the expected arguments;
+arguments, results and duration, the model requests (duration and token counts when the
+server reports them), and checks:
+- that the expected tool calls succeeded with the expected arguments, or returned the
+  expected data (e.g. the DVF result is for the right municipality and year);
 - that the answer contains the figure returned by the tool in this run (or the expected
   text, or no euro amount when the data does not exist);
 - that the model did not fail (error, or no answer within max_turns).
@@ -13,6 +14,8 @@ reports them), and checks:
 Results go to bench/results/<date>-<time>/: meta.json (machine, model, configuration),
 runs.jsonl (one line per run, with the full answer) and summary.md (tables to publish).
 The memory used by the model server is not measured: read it in Activity Monitor.
+
+  python -m bench.run --summarize latest     # rebuild summary.md of the latest results
 """
 
 from __future__ import annotations
@@ -62,15 +65,34 @@ def value_at(data: Any, path: str) -> Any:
 
 
 def _same(actual: Any, expected: Any) -> bool:
-    norm = lambda v: re.sub(r"\s+", "", str(v)).upper()  # noqa: E731
+    """Compare codes and years, ignoring case, spaces and dots ("62.02A" = "6202a")."""
+    norm = lambda v: re.sub(r"[\s.]+", "", str(v)).upper()  # noqa: E731
     return norm(actual) == norm(expected)
 
 
+def _result(call: ToolCall) -> dict[str, Any]:
+    try:
+        d = json.loads(call.result)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
 def call_matches(call: ToolCall, expected: dict[str, Any]) -> bool:
+    """'args': required arguments; 'result': required top-level fields of the tool result."""
     if call.tool != expected["tool"] or (call.error and not expected.get("allow_error")):
         return False
     args = call.arguments if isinstance(call.arguments, dict) else (tool_arguments(call.arguments) or {})
-    return all(k in args and _same(args[k], v) for k, v in (expected.get("args") or {}).items())
+    if not all(k in args and _same(args[k], v) for k, v in (expected.get("args") or {}).items()):
+        return False
+    result = _result(call) if expected.get("result") else {}
+    return all(k in result and _same(result[k], v) for k, v in (expected.get("result") or {}).items())
+
+
+def unneeded_calls(q: dict[str, Any], tools: list[str]) -> int:
+    """Calls to tools the question does not need ('calls' and 'allowed' tools are needed)."""
+    needed = {e["tool"] for e in q.get("calls") or []} | set(q.get("allowed") or [])
+    return sum(t not in needed for t in tools)
 
 
 def evaluate(q: dict[str, Any], a: Answer) -> dict[str, Any]:
@@ -87,8 +109,10 @@ def evaluate(q: dict[str, Any], a: Answer) -> dict[str, Any]:
                 value = value_at(json.loads(results[-1].result), spec["path"])
             except (json.JSONDecodeError, TypeError):
                 value = None
-        if value is None:
-            answer_ok, detail = False, f"no value at {spec['path']} in a {spec['tool']} result"
+        if not results:
+            answer_ok, detail = False, f"no successful {spec['tool']} call"
+        elif value is None:
+            answer_ok, detail = False, f"no value at {spec['path']} in the {spec['tool']} result"
         elif isinstance(value, (int, float)) and not isinstance(value, bool):
             answer_ok = int(round(value)) in numbers_in(a.text)
             detail = f"expected {value}"
@@ -104,7 +128,6 @@ def evaluate(q: dict[str, Any], a: Answer) -> dict[str, Any]:
         answer_ok = answer_ok and amount is None
         detail = f"euro amount found: {amount.group(0)!r}" if amount else "no euro amount"
     model_ok = a.error is None
-    expected_calls = len(q.get("calls") or [])
     return {
         "success": model_ok and not missing and answer_ok,
         "api_error": any(c.error and any(m in c.result for m in API_ERROR_MARKERS) for c in a.tool_calls),
@@ -115,7 +138,7 @@ def evaluate(q: dict[str, Any], a: Answer) -> dict[str, Any]:
         "calls": len(a.tool_calls),
         "calls_failed": sum(c.error for c in a.tool_calls),
         "calls_repeated": sum(c.repeated for c in a.tool_calls),
-        "calls_extra": max(0, len(a.tool_calls) - expected_calls),
+        "calls_extra": unneeded_calls(q, [c.tool for c in a.tool_calls]),
     }
 
 
@@ -132,7 +155,7 @@ def run_record(q: dict[str, Any], n: int, a: Answer, seconds: float) -> dict[str
         "completion_tokens": sum(u.get("completion_tokens") or 0 for u in usage) if any(usage) else None,
         "error": a.error,
         "tool_calls": [{"tool": c.tool, "arguments": c.arguments, "error": c.error, "repeated": c.repeated,
-                        "seconds": round(c.seconds, 2)} for c in a.tool_calls],
+                        "seconds": round(c.seconds, 2), "result": c.result} for c in a.tool_calls],
         "answer": a.text,
     }
 
@@ -174,7 +197,7 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
         lines += [f"Model output: {sum(completion)} tokens in {llm_s:.0f} s of model requests, "
                   f"{sum(completion) / llm_s:.1f} tokens/s end to end (includes prompt processing).", ""]
     lines += [
-        "| Question | Success | Median time (s) | Median tool calls | Extra calls | Failed calls | Repeated calls |",
+        "| Question | Success | Median time (s) | Median tool calls | Unneeded calls | Failed calls | Repeated calls |",
         "|---|---|---|---|---|---|---|",
     ]
     for qid, rs in by_id.items():
@@ -182,9 +205,13 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
             f"| {qid} | {sum(r['success'] for r in rs)}/{len(rs)} | {_median([r['seconds'] for r in rs])} "
             f"| {_median([r['calls'] for r in rs])} | {sum(r['calls_extra'] for r in rs)} "
             f"| {sum(r['calls_failed'] for r in rs)} | {sum(r['calls_repeated'] for r in rs)} |")
+    lines += ["", "Unneeded calls: calls to tools the question does not need (looking up a municipality "
+              "code is needed when the question names a town). Failed calls include tool errors the "
+              "model caused (e.g. a wrong code) and expected errors (Strasbourg is not covered by DVF)."]
     failures = [r for r in records if not r["success"]]
     if failures:
-        lines += ["", "## Failures", "", "| Question | Run | Reason |", "|---|---|---|"]
+        lines += ["", "## Failures", "", "| Question | Run | Reason | Calls made | Answer (start) |",
+                  "|---|---|---|---|---|"]
         for r in failures:
             reasons = []
             if not r["model_ok"]:
@@ -195,9 +222,45 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
                 reasons.append(f"answer ({r['answer_detail']})")
             if r["api_error"]:
                 reasons.append("public API error during the run")
-            lines.append(f"| {r['id']} | {r['run']} | {'; '.join(reasons)} |")
+            lines.append(f"| {r['id']} | {r['run']} | {'; '.join(reasons)} | {_calls_text(r['tool_calls'])} "
+                         f"| {_cell(r['answer'], 160)} |")
     lines += ["", "Memory used by the model server: not measured by this script (read it in Activity Monitor).", ""]
     return "\n".join(lines)
+
+
+def _cell(text: Any, limit: int) -> str:
+    t = re.sub(r"\s+", " ", str(text or "")).strip().replace("|", "/")
+    return t if len(t) <= limit else t[:limit] + "…"
+
+
+def _calls_text(calls: list[dict[str, Any]]) -> str:
+    parts = []
+    for c in calls:
+        args = c["arguments"] if isinstance(c["arguments"], dict) else {}
+        shown = ", ".join(f"{k}={v}" for k, v in args.items())
+        parts.append(f"{c['tool']}({shown})" + (" ERROR" if c["error"] else "") + (" repeated" if c["repeated"] else ""))
+    return _cell(" > ".join(parts) or "none", 300)
+
+
+def resummarize(path: str, questions_file: str | None) -> None:
+    """Rebuild summary.md from runs.jsonl and meta.json (unneeded calls are recomputed)."""
+    root = Path(path)
+    if path == "latest":
+        dirs = sorted(d for d in (HERE / "results").glob("*-*") if (d / "runs.jsonl").exists())
+        if not dirs:
+            sys.exit("No results found in bench/results.")
+        root = dirs[-1]
+    meta = json.loads((root / "meta.json").read_text(encoding="utf-8"))
+    records = [json.loads(line) for line in (root / "runs.jsonl").read_text(encoding="utf-8").splitlines() if line]
+    qfile = questions_file or meta.get("questions_file") or str(HERE / "questions.json")
+    questions = {q["id"]: q for q in json.loads(Path(qfile).read_text(encoding="utf-8"))["questions"]}
+    for r in records:
+        if r["id"] in questions:
+            r["calls_extra"] = unneeded_calls(questions[r["id"]], [c["tool"] for c in r["tool_calls"]])
+    summary = summarize(records, meta)
+    (root / "summary.md").write_text(summary, encoding="utf-8")
+    print(summary)
+    print(f"Rewritten: {root / 'summary.md'}")
 
 
 # ---------------------------------------------------------------- environment
@@ -263,7 +326,11 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--label", help="free text stored with the results, e.g. model file and machine")
     ap.add_argument("--out", default=str(HERE / "results"))
     ap.add_argument("--env-file", default=".env")
+    ap.add_argument("--summarize", metavar="DIR", help="only rebuild summary.md of a results folder ('latest' for the last one)")
     args = ap.parse_args(argv)
+    if args.summarize:
+        resummarize(args.summarize, args.questions if "--questions" in (argv or sys.argv) else None)
+        return
     try:
         envfile.load(args.env_file)
         cfg = load_config(args.config)

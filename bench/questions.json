@@ -1,53 +1,170 @@
 {
-  "_note": "Fixed questions for bench/run.py. 'calls': tool calls that must succeed, with the arguments that must match (other arguments are free). 'answer': how the final answer is checked: 'value_from' takes a value from the result of the last successful call of that tool, in this run, and requires it in the answer; 'contains' requires these strings; 'no_amount' forbids a euro amount. 'allow_error': the call may return an error (the expected behaviour is to report it).",
+  "_note": "Fixed questions for bench/run.py. 'calls': tool calls that must succeed; 'args': arguments that must match (others are free); 'result': top-level fields the tool result must have (e.g. the DVF data is for the right municipality and period, whether or not the model passed the default period); 'allow_error': the call may return an error (the expected behaviour is to report it). 'allowed': other tools the question may need (not counted as unneeded calls). 'answer': 'value_from' takes a value from the result of the last successful call of that tool, in this run, and requires it in the answer; 'contains' requires these strings; 'no_amount' forbids a euro amount.",
   "questions": [
     {
       "id": "municipality-code-beaune",
       "question": "Quel est le code INSEE de la commune de Beaune ?",
-      "calls": [{"tool": "find_municipality", "args": {"name": "Beaune"}}],
-      "answer": {"contains": ["21054"]}
+      "calls": [
+        {
+          "tool": "find_municipality",
+          "args": {
+            "name": "Beaune"
+          }
+        }
+      ],
+      "answer": {
+        "contains": [
+          "21054"
+        ]
+      }
     },
     {
       "id": "dvf-beaune-apartment-m2",
       "question": "Quel est le prix médian au m² des appartements vendus à Beaune en 2025 ?",
-      "calls": [{"tool": "property_prices", "args": {"insee_code": "21054", "period": "2025"}}],
-      "answer": {"value_from": {"tool": "property_prices", "path": "statistics.apartment.median_price_per_m2_eur"}}
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "21054",
+            "period": "2025"
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "allowed": [
+        "find_municipality"
+      ]
     },
     {
       "id": "dvf-dijon-house-m2",
       "question": "Quel est le prix médian au m² des maisons vendues à Dijon en 2024 ?",
-      "calls": [{"tool": "property_prices", "args": {"insee_code": "21231", "period": "2024"}}],
-      "answer": {"value_from": {"tool": "property_prices", "path": "statistics.house.median_price_per_m2_eur"}}
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "21231",
+            "period": "2024"
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.house.median_price_per_m2_eur"
+        }
+      },
+      "allowed": [
+        "find_municipality"
+      ]
     },
     {
       "id": "dvf-toulouse-apartment-m2",
       "question": "Quel est le prix médian au m² des appartements vendus à Toulouse en 2025 ?",
-      "calls": [{"tool": "property_prices", "args": {"insee_code": "31555", "period": "2025"}}],
-      "answer": {"value_from": {"tool": "property_prices", "path": "statistics.apartment.median_price_per_m2_eur"}}
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "31555",
+            "period": "2025"
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "allowed": [
+        "find_municipality"
+      ]
     },
     {
       "id": "dvf-paris-11-apartment-m2",
       "question": "Quel est le prix médian au m² des appartements vendus dans le 11e arrondissement de Paris en 2025 ?",
-      "calls": [{"tool": "property_prices", "args": {"insee_code": "75111", "period": "2025"}}],
-      "answer": {"value_from": {"tool": "property_prices", "path": "statistics.apartment.median_price_per_m2_eur"}}
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "75111",
+            "period": "2025"
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "allowed": [
+        "find_municipality"
+      ]
     },
     {
       "id": "dvf-strasbourg-not-covered",
       "question": "Quel est le prix médian au m² des maisons vendues à Strasbourg en 2025 ?",
-      "calls": [{"tool": "property_prices", "args": {}, "allow_error": true}],
-      "answer": {"no_amount": true}
+      "calls": [
+        {
+          "tool": "property_prices",
+          "args": {},
+          "allow_error": true
+        }
+      ],
+      "answer": {
+        "no_amount": true
+      },
+      "allowed": [
+        "find_municipality"
+      ]
     },
     {
       "id": "companies-toulouse-naf-62-02a",
       "question": "Combien d'entreprises actives ont pour activité principale le conseil en systèmes et logiciels informatiques (code NAF 62.02A) et au moins un établissement à Toulouse ?",
-      "calls": [{"tool": "search_companies", "args": {"municipality_code": "31555", "naf_code": "62.02A"}}],
-      "answer": {"value_from": {"tool": "search_companies", "path": "total_results"}}
+      "calls": [
+        {
+          "tool": "search_companies",
+          "args": {
+            "municipality_code": "31555",
+            "naf_code": "62.02A"
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "search_companies",
+          "path": "total_results"
+        }
+      },
+      "allowed": [
+        "find_municipality"
+      ]
     },
     {
       "id": "company-profile-siren",
       "question": "Quelle est l'activité principale (code NAF) de l'entreprise dont le SIREN est 552032534 ?",
-      "calls": [{"tool": "company_profile", "args": {"siren": "552032534"}}],
-      "answer": {"value_from": {"tool": "company_profile", "path": "company.naf_activity_code"}}
+      "calls": [
+        {
+          "tool": "company_profile",
+          "args": {
+            "siren": "552032534"
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "company_profile",
+          "path": "company.naf_activity_code"
+        }
+      },
+      "allowed": [
+        "search_companies"
+      ]
     }
   ]
 }
