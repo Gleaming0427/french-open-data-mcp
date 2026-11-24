@@ -1,5 +1,5 @@
 {
-  "_note": "Fixed questions for bench/run.py. 'calls': tool calls that must succeed; 'args': arguments that must match (others are free); 'result': top-level fields the tool result must have (e.g. the DVF data is for the right municipality and period, whether or not the model passed the default period); 'allow_error': the call may return an error (the expected behaviour is to report it). 'allowed': other tools the question may need (not counted as unneeded calls). 'answer': 'value_from' takes a value from the result of the last successful call of that tool, in this run, and requires it in the answer; 'contains' requires these strings; 'no_amount' forbids a euro amount.",
+  "_note": "Fixed questions for bench/run.py. 'calls': tool calls that must succeed; 'args': arguments that must match (others are free); 'result': fields the tool result must have (dotted paths) (e.g. the DVF data is for the right municipality and period, whether or not the model passed the default period); 'allow_error': the call may return an error (the expected behaviour is to report it). 'allowed': other tools the question may need (not counted as unneeded calls). 'answer': 'value_from' takes a value from the result of the last successful call of that tool, in this run, and requires it in the answer; 'contains' requires these strings; 'no_amount' forbids a euro amount. A question with no 'calls' can be answered without a tool (Strasbourg: the property_prices description says that Alsace is not covered).",
   "questions": [
     {
       "id": "municipality-code-beaune",
@@ -109,18 +109,13 @@
     {
       "id": "dvf-strasbourg-not-covered",
       "question": "Quel est le prix médian au m² des maisons vendues à Strasbourg en 2025 ?",
-      "calls": [
-        {
-          "tool": "property_prices",
-          "args": {},
-          "allow_error": true
-        }
-      ],
+      "calls": [],
       "answer": {
         "no_amount": true
       },
       "allowed": [
-        "find_municipality"
+        "find_municipality",
+        "property_prices"
       ]
     },
     {
@@ -129,9 +124,9 @@
       "calls": [
         {
           "tool": "search_companies",
-          "args": {
-            "municipality_code": "31555",
-            "naf_code": "62.02A"
+          "result": {
+            "filters.code_commune": "31555",
+            "filters.activite_principale": "62.02A"
           }
         }
       ],

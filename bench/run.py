@@ -79,14 +79,15 @@ def _result(call: ToolCall) -> dict[str, Any]:
 
 
 def call_matches(call: ToolCall, expected: dict[str, Any]) -> bool:
-    """'args': required arguments; 'result': required top-level fields of the tool result."""
+    """'args': required arguments; 'result': required fields of the tool result (dotted paths)."""
     if call.tool != expected["tool"] or (call.error and not expected.get("allow_error")):
         return False
     args = call.arguments if isinstance(call.arguments, dict) else (tool_arguments(call.arguments) or {})
     if not all(k in args and _same(args[k], v) for k, v in (expected.get("args") or {}).items()):
         return False
     result = _result(call) if expected.get("result") else {}
-    return all(k in result and _same(result[k], v) for k, v in (expected.get("result") or {}).items())
+    return all(value_at(result, k) is not None and _same(value_at(result, k), v)
+               for k, v in (expected.get("result") or {}).items())
 
 
 def unneeded_calls(q: dict[str, Any], tools: list[str]) -> int:
