@@ -22,7 +22,7 @@ import json
 import os
 import sys
 from contextlib import AsyncExitStack
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import anyio
@@ -34,9 +34,12 @@ from . import envfile, llm
 DEFAULT_SYSTEM_PROMPT = (
     "You answer questions using official French public data. Use the tools to get the facts; "
     "never invent a figure, a name or a legal article. If the tools do not provide the "
-    "information, say so. End by citing the source given by the tool. Answer briefly, "
-    "in the language of the question."
+    "information, say so. Call only the tools the question needs, and answer as soon as a "
+    "tool result contains the answer. End by citing the source given by the tool. Answer "
+    "briefly, in the language of the question."
 )
+# Prefix of a tool result sent again when the model repeats an identical call.
+REPEATED_CALL_NOTE = "You already called this tool with these arguments; same result as before. Answer from it.\n"
 # Variables passed to MCP servers started as subprocesses (stdio), on top of the
 # safe ones kept by the SDK (PATH, HOME...). Proxy and CA variables are needed
 # when outbound traffic goes through a proxy.
@@ -57,6 +60,7 @@ class ToolCall:
     error: bool
     source: str | None
     excerpt: str
+    repeated: bool = False  # identical to an earlier successful call: not run again
 
 
 @dataclass
@@ -184,6 +188,7 @@ class Orchestrator:
         messages: list[dict[str, Any]] = [{"role": "system", "content": self.system_prompt},
                                           {"role": "user", "content": question}]
         out = Answer(text="")
+        done: dict[tuple[str, str], tuple[str, ToolCall]] = {}  # successful calls of this question
         for turn in range(1, self.max_turns + 1):
             out.turns = turn
             reply = await anyio.to_thread.run_sync(self._request, messages)
@@ -206,7 +211,17 @@ class Orchestrator:
                     "name": c["name"], "arguments": json.dumps({} if args is None else args, ensure_ascii=False)}})
             messages.append({"role": "assistant", "content": llm.strip_reasoning(reply.content), "tool_calls": calls})
             for c in reply.tool_calls:
-                text, trace = await self._execute(c["name"], c["arguments"])
+                args = tool_arguments(c["arguments"])
+                key = (c["name"], json.dumps(args, sort_keys=True)) if args is not None else None
+                if key in done:
+                    # Small models sometimes repeat a call (a DVF query takes several seconds):
+                    # send back the earlier result instead of querying the API again.
+                    text, trace = done[key]
+                    text, trace = REPEATED_CALL_NOTE + text, replace(trace, repeated=True)
+                else:
+                    text, trace = await self._execute(c["name"], c["arguments"])
+                    if key and not trace.error:
+                        done[key] = (text, trace)
                 out.tool_calls.append(trace)
                 messages.append({"role": "tool", "tool_call_id": c["id"], "content": text})
         out.text = "Maximum number of tool calls reached without a final answer."
@@ -235,7 +250,7 @@ def show(a: Answer) -> None:
     if a.tool_calls:
         print("\n--- tools called ---")
         for t in a.tool_calls:
-            state = "ERROR" if t.error else "ok"
+            state = "ERROR" if t.error else "repeated, not run again" if t.repeated else "ok"
             print(f"- {t.server}/{t.tool} {json.dumps(t.arguments, ensure_ascii=False)}: {state}"
                   + (f" - source: {t.source}" if t.source else ""))
 

@@ -99,6 +99,24 @@ class TestOrchestrator(FakeLlm, unittest.IsolatedAsyncioTestCase):
         self.assertTrue(a.tool_calls[0].error)
         self.assertIn("invalid JSON arguments", a.text)
 
+    async def test_repeated_call_is_not_run_again(self):
+        srv = test_server()
+        runs = []
+
+        @srv.tool()
+        def property_prices(insee_code: str) -> str:
+            """Fake prices."""
+            runs.append(insee_code)
+            return json.dumps({"source": "Fake source", "median": 1})
+
+        async with Orchestrator(self.cfg(), {"t": Client(srv)}) as o:
+            a = await o.answer("repeat price 21054")
+        self.assertIsNone(a.error)
+        self.assertEqual(runs, ["21054"])
+        self.assertEqual([t.repeated for t in a.tool_calls], [False, True])
+        self.assertEqual(a.tool_calls[1].source, "Fake source")
+        self.assertIn("already called", a.text)
+
     async def test_name_collisions_are_prefixed(self):
         clients = {"a": Client(test_server("a")), "b": Client(test_server("b"))}
         async with Orchestrator(self.cfg(), clients, tool_filters={"b": ["company_profile"]}) as o:

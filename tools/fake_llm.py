@@ -6,7 +6,8 @@ Deterministic behaviour:
   * question with 9 or 14 digits                 -> company_profile(siren)
   * otherwise                                    -> search_companies(text=question)
   (if the chosen tool is not offered, it takes the first tool in the list;
-  if the question contains "invalid arguments", the call carries arguments that are not JSON);
+  if the question contains "invalid arguments", the call carries arguments that are not JSON;
+  if it contains "repeat", the same call is made a second time after the first result);
 - then it answers by quoting the start of the last tool result.
 
 The stream sends reasoning first, then the tool call in two pieces. Like the Olala MLX
@@ -73,7 +74,10 @@ class Handler(BaseHTTPRequestHandler):
         results = [m["content"] for m in msgs if m["role"] == "tool"]
         tools = [t["function"]["name"] for t in req.get("tools") or []]
 
-        if results or not tools:
+        if "repeat" in question.lower() and len(results) == 1 and tools:
+            name, args = choose_call(question, tools)
+            call = (name, json.dumps(args, ensure_ascii=False))
+        elif results or not tools:
             call = None
             text = f"According to the tool: {results[-1][:120]}" if results else "OK"
         else:

@@ -234,8 +234,15 @@ the model as text, so it can report them instead of guessing.
   answered; the same query worked again shortly after. Each request is retried once; if it
   still fails, the tool returns the error and the model reports it.
 - **Small model.** Olala mini has about 1B active parameters per token (model card). Its
-  tool-call reliability on these tools has not been measured beyond the test above.
-  Restrict the tool list per server if the model picks the wrong tool.
+  tool-call reliability on these tools has not been measured beyond the runs described
+  here. In a second run of the question above (2026-11-24), after `property_prices` it also
+  called `search_companies`, `company_profile` with the INSEE code instead of a SIREN (which
+  failed), and `property_prices` twice more with the same arguments; the answer gave the
+  median sale price (130,000 €), which matches the tool result, without the price per m².
+  Since then, an identical repeated call reuses the first result instead of querying the
+  API again, and the instructions ask the model to stop once a result answers the question;
+  the effect on Olala has not been measured yet. Restrict the tool list (`tools` in
+  `mcp_servers`) if the model picks the wrong tool.
 - **Not advice.** Answers are not legal, tax or financial advice. Check important
   answers against the cited source.
 
