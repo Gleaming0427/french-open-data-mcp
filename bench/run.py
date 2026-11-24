@@ -184,6 +184,8 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
         f"{meta['machine'].get('memory_gb') or '?'} GB memory"
         + (f", macOS {meta['machine']['macos']}" if meta['machine'].get('macos') else ""),
         f"- Code: french-open-data-mcp {meta['version']}, commit `{meta.get('commit') or '?'}`",
+        f"- Questions: `{Path(meta.get('questions_file') or 'questions.json').name}`, "
+        f"{len({r['id'] for r in records})} questions",
         f"- Runs: {meta['runs']} per question, {len(records)} in total",
         "",
         f"**Success: {ok}/{len(records)}** (expected tool calls succeeded and the answer contains the tool's figure).",

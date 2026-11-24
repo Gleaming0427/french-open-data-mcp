@@ -223,7 +223,8 @@ configuration, commit). Token counts come from the model server when it reports 
 request, so they include prompt processing. Runs during which a public API failed
 (network, HTTP 429 or 5xx) are counted and shown separately: they are not the model's
 fault. The script does not measure memory: read the model server's memory use in Activity
-Monitor during the run. `--only id1,id2` runs some questions only. The failures table lists
+Monitor during the run. `--only id1,id2` runs some questions only. `--questions
+bench/questions_holdout.json` runs the held-out questions (see Limits). The failures table lists
 the calls made and the start of each wrong answer; `python -m bench.run --summarize latest`
 rebuilds `summary.md` of the latest results with the current version of the script.
 
@@ -277,8 +278,16 @@ the model as text, so it can report them instead of guessing.
   `search_companies` take the municipality name (arrondissements included) and resolve it
   themselves; example codes were removed from the tool descriptions; a NAF code written in
   the search text is used as a NAF filter; a Paris postcode is converted to the
-  arrondissement code; an empty statistic says that there is no figure. Not measured again
-  yet.
+  arrondissement code; an empty statistic says that there is no figure.
+- **Second benchmark (same machine and questions, tools v2): 20/24.** All DVF questions
+  succeeded except one Paris run, where the model asked for "Paris" without the
+  arrondissement and gave up after the error. The company count failed 3/3: the search was
+  right, but two answers gave the number of companies listed (5) instead of the total
+  (1,501), and one said it could not answer. Since then, the Paris error asks for the
+  arrondissement by name, and the search result states the total in a sentence. These
+  changes were made on the same 8 questions, so a new run on them would be optimistic:
+  `bench/questions_holdout.json` holds 8 other questions, written before any run on them and
+  not used to adjust the tools.
 - **Not advice.** Answers are not legal, tax or financial advice. Check important
   answers against the cited source.
 
