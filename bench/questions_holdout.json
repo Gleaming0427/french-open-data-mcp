@@ -1,5 +1,5 @@
 {
-  "_note": "Held-out questions, written on 2026-11-24 after the tools were adjusted on bench/questions.json, and not used to adjust them. Same format as questions.json. Run with: python -m bench.run --questions bench/questions_holdout.json company-name-siren checks 'TOTALENERGIES' (case-insensitive): the API name is 'TOTALENERGIES SE (TOTALENERGIE SE)' (checked on 2026-11-24), and requiring the whole string would fail correct answers. Changed before any run on this file.",
+  "_note": "Held-out questions, written on 2026-11-24 after the tools were adjusted on bench/questions.json, and not used to adjust them. Same format as questions.json. Run with: python -m bench.run --questions bench/questions_holdout.json. company-name-siren checks 'TOTALENERGIES' (case-insensitive): the API name is 'TOTALENERGIES SE (TOTALENERGIE SE)' (checked on 2026-11-24), and requiring the whole string would fail correct answers. Changed before any run on this file.",
   "questions": [
     {
       "id": "municipality-code-montpellier",
