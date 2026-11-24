@@ -1,20 +1,15 @@
 {
-  "_note": "Copy to config.json. 'llm': an OpenAI-compatible model with tool calling. 'mcp_servers': servers started as subprocesses ('command') or reached over HTTP ('url'). API keys are read from environment variables or from a .env file (see .env.example), never from this file.",
+  "_note": "Copy to config.json. 'llm': a local OpenAI-compatible model with tool calling (default: Olala served by mlx-engine on this Mac, see the README). 'mcp_servers': MCP servers started on this machine as subprocesses (stdio). Keys are read from environment variables or from a .env file (see .env.example), never from this file.",
   "llm": {
-    "base_url": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
-    "api_key_env": "OLALA_API_KEY",
-    "model": "Olala-v1.0-mini-7A1B",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "api_key_env": "MLX_ENGINE_API_KEY",
+    "model": "olala",
     "stream": true,
     "max_tokens": 4096,
-    "params": {"temperature": 0.8, "top_p": 0.9, "reasoning_effort": "low"}
+    "params": {"temperature": 0.8, "top_p": 0.9, "top_k": 40, "chat_template_kwargs": {"reasoning_effort": "low"}}
   },
   "mcp_servers": [
-    {"name": "french-open-data", "command": ["python3", "-m", "fr_open_data.server"]},
-    {
-      "name": "datagouv",
-      "url": "https://mcp.data.gouv.fr/mcp",
-      "tools": ["search_datasets", "list_dataset_resources", "query_resource_data"]
-    }
+    {"name": "french-open-data", "command": ["python3", "-m", "fr_open_data.server"]}
   ],
   "max_turns": 6,
   "max_result_chars": 8000,
@@ -26,19 +21,11 @@
       "stream": true,
       "params": {"temperature": 0.2}
     },
-    "olala_mlx_local": {
-      "base_url": "http://127.0.0.1:8000/v1",
-      "api_key_env": "MLX_ENGINE_API_KEY",
-      "model": "olala",
-      "stream": true,
-      "params": {"temperature": 0.8, "top_p": 0.9, "top_k": 40, "chat_template_kwargs": {"reasoning_effort": "low"}}
-    },
     "fake_llm_for_tests": {
       "base_url": "http://127.0.0.1:8099/v1",
       "api_key_env": null,
       "model": "fake",
       "stream": true
     }
-  },
-  "_remote_server_with_token": {"name": "french-open-data", "url": "https://mcp.example.org/mcp", "token_env": "MCP_TOKEN"}
+  }
 }

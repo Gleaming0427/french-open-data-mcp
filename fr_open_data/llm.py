@@ -1,9 +1,9 @@
 """Minimal client for an OpenAI-compatible chat API (standard library only).
 
-Works with:
-- the Olala API (https://oai.endpoints.kepler.ai.cloud.ovh.net/v1);
+Works with local servers:
+- the Olala MLX server, mlx-engine (http://127.0.0.1:8000/v1, streaming responses only);
 - Ollama (http://localhost:11434/v1);
-- vLLM, and the Olala MLX server, mlx-engine (streaming responses only).
+- the fake server used by the tests (tools/fake_llm.py).
 
 When streaming, the client rebuilds the reasoning (`reasoning_content`), the
 answer (`content`) and the tool calls (`tool_calls`, sent in pieces).

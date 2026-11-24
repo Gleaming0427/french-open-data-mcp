@@ -1,30 +1,21 @@
-"""The "french-open-data" MCP server.
+"""The "french-open-data" MCP server, over stdio (the client starts it on the same machine).
 
 Usage:
-  python -m fr_open_data.server                       # stdio (client on the same machine)
-  python -m fr_open_data.server --http --port 8765    # Streamable HTTP on 127.0.0.1
+  python -m fr_open_data.server
 
-Over HTTP, if MCP_TOKEN is set, every request must carry
-"Authorization: Bearer <MCP_TOKEN>" (the "Bearer" option in Open WebUI).
-To expose it on the Internet, put it behind an HTTPS reverse proxy and declare
-the domain name with --domain (DNS rebinding protection from the MCP SDK).
-
-MCP_TOKEN and the LEGIFRANCE_* variables can also be set in a .env file in the
-current directory (see .env.example); a variable already set in the environment wins.
+The LEGIFRANCE_* variables can also be set in a .env file in the current
+directory (see .env.example); a variable already set in the environment wins.
 """
 
 from __future__ import annotations
 
 import argparse
-import hmac
 import json
-import os
 import sys
 from typing import Annotated, Any, Callable
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from mcp.server.transport_security import TransportSecuritySettings
 from mcp_types import ToolAnnotations
 from pydantic import Field
 
@@ -123,41 +114,8 @@ def build_server(with_legifrance: bool | None = None) -> MCPServer:
     return srv
 
 
-class RequireToken:
-    """ASGI middleware: reject HTTP requests without "Authorization: Bearer <token>"."""
-
-    def __init__(self, app: Any, token: str) -> None:
-        self.app, self.expected = app, f"Bearer {token}".encode()
-
-    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
-        if scope["type"] == "http":
-            received = dict(scope.get("headers") or []).get(b"authorization", b"")
-            if not hmac.compare_digest(received, self.expected):
-                await send({"type": "http.response.start", "status": 401,
-                            "headers": [(b"content-type", b"application/json"), (b"www-authenticate", b"Bearer")]})
-                await send({"type": "http.response.body", "body": b'{"error":"missing or invalid token"}'})
-                return
-        await self.app(scope, receive, send)
-
-
-def http_app(srv: MCPServer, host: str, domains: list[str], token: str | None) -> Any:
-    security = None
-    if domains:
-        security = TransportSecuritySettings(
-            enable_dns_rebinding_protection=True,
-            allowed_hosts=[*domains, "127.0.0.1:*", "localhost:*"],
-            allowed_origins=[f"https://{d}" for d in domains],
-        )
-    app = srv.streamable_http_app(host=host, transport_security=security)
-    return RequireToken(app, token) if token else app
-
-
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--http", action="store_true", help="Streamable HTTP (default: stdio)")
-    ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--domain", action="append", default=[], help="accepted public domain name (repeatable)")
     ap.add_argument("--env-file", default=".env", help="file of KEY=VALUE lines read at startup (default: .env)")
     args = ap.parse_args(argv)
     try:
@@ -165,16 +123,7 @@ def main(argv: list[str] | None = None) -> None:
     except ValueError as e:
         sys.exit(f"{args.env_file}: {e}")
 
-    srv = build_server()
-    if not args.http:
-        srv.run("stdio")
-        return
-    token = os.environ.get("MCP_TOKEN")
-    if args.host not in ("127.0.0.1", "localhost", "::1") and not token:
-        ap.error("listening beyond localhost: set MCP_TOKEN")
-    import uvicorn
-
-    uvicorn.run(http_app(srv, args.host, args.domain, token), host=args.host, port=args.port)
+    build_server().run("stdio")
 
 
 if __name__ == "__main__":

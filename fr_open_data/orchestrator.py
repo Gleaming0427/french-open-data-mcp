@@ -1,11 +1,12 @@
-"""Orchestrator: connects an OpenAI-compatible LLM to one or more MCP servers.
+"""Orchestrator: connects a local OpenAI-compatible LLM to MCP servers started on this machine.
 
   python -m fr_open_data.orchestrator --config config.json --check
   python -m fr_open_data.orchestrator --config config.json --question "Apartment prices in Beaune in 2025?"
   python -m fr_open_data.orchestrator --config config.json        # interactive mode
 
-API keys come from environment variables, or from a .env file in the current
-directory (see .env.example); a variable already set in the terminal wins.
+Keys (MLX_ENGINE_API_KEY, LEGIFRANCE_*) come from environment variables, or from a
+.env file in the current directory (see .env.example); a variable already set in the
+terminal wins.
 
 Loop: the model receives the question and the list of MCP tools; when it asks for
 a tool, the orchestrator runs it on the matching MCP server and sends the result
@@ -67,23 +68,13 @@ class Answer:
 
 
 def client_from_config(s: dict[str, Any]) -> Client:
-    """Build an MCP client: {"command": [...]} (stdio) or {"url": ...} (Streamable HTTP)."""
-    if s.get("command"):
-        cmd = list(s["command"])
-        env = {**get_default_environment(), **{k: os.environ[k] for k in FORWARDED_ENV if k in os.environ}}
-        return Client(StdioServerParameters(command=cmd[0], args=cmd[1:], env=env, cwd=s.get("cwd")),
-                      read_timeout_seconds=CONNECT_TIMEOUT_S * 5)
-    if s.get("url"):
-        token = os.environ.get(s["token_env"]) if s.get("token_env") else None
-        if not token:
-            return Client(s["url"], read_timeout_seconds=CONNECT_TIMEOUT_S * 5)
-        import httpx2
-        from mcp.client.streamable_http import streamable_http_client
-
-        http = httpx2.AsyncClient(headers={"Authorization": f"Bearer {token}"},
-                                  timeout=httpx2.Timeout(30.0, read=300.0))
-        return Client(streamable_http_client(s["url"], http_client=http), read_timeout_seconds=CONNECT_TIMEOUT_S * 5)
-    raise ValueError(f"MCP server {s.get('name')!r}: give 'command' or 'url'.")
+    """Build an MCP client for a server started as a subprocess: {"command": [...]} (stdio)."""
+    if not s.get("command"):
+        raise ValueError(f"MCP server {s.get('name')!r}: give 'command' (the server is started locally over stdio).")
+    cmd = list(s["command"])
+    env = {**get_default_environment(), **{k: os.environ[k] for k in FORWARDED_ENV if k in os.environ}}
+    return Client(StdioServerParameters(command=cmd[0], args=cmd[1:], env=env, cwd=s.get("cwd")),
+                  read_timeout_seconds=CONNECT_TIMEOUT_S * 5)
 
 
 def openai_tool(name: str, tool: Any) -> dict[str, Any]:
@@ -249,8 +240,7 @@ def show(a: Answer) -> None:
                   + (f" - source: {t.source}" if t.source else ""))
 
 
-async def _main(args: argparse.Namespace) -> None:
-    cfg = load_config(args.config)
+async def _main(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
     key_env = cfg["llm"].get("api_key_env")
     if key_env and not os.environ.get(key_env):
         print(f"warning: {key_env} is not set (environment or {args.env_file}): requests are sent without a key",
@@ -296,7 +286,12 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(f"{args.env_file}: {e}")
     if not os.path.exists(args.config):
         sys.exit(f"Config not found: {args.config} (copy config.example.json)")
-    anyio.run(_main, args)
+    cfg = load_config(args.config)
+    for s in cfg.get("mcp_servers") or []:
+        if not s.get("command"):
+            sys.exit(f"{args.config}: MCP server {s.get('name')!r} has no 'command'. Only servers started on "
+                     "this machine over stdio are supported (copy config.example.json again).")
+    anyio.run(_main, args, cfg)
 
 
 if __name__ == "__main__":

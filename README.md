@@ -1,34 +1,42 @@
 # french-open-data-mcp
 
 MCP server for French public data (companies, property prices, Légifrance) and an
-orchestrator for any OpenAI-compatible LLM, such as Olala.
+orchestrator for a local LLM, such as Olala on a Mac.
 
-The model does not answer from memory. It calls tools, and each tool result carries a
-`source` field that the answer cites.
+Everything runs on your machine: the model, the orchestrator and the MCP server. The model
+does not answer from memory. It calls tools, and each tool result carries a `source` field
+that the answer cites.
 
 ## Architecture
 
 ```
- question ──▶ MCP client ──────────────▶ LLM (OpenAI-compatible API, tool calling)
-              (this repo's orchestrator,   e.g. Olala, Ollama, vLLM
-               or Open WebUI, ...)
+ question ──▶ orchestrator (this repo) ──────▶ local LLM, OpenAI-compatible API with tool calling
+                  │                             Olala via mlx-engine (http://127.0.0.1:8000/v1)
+                  │                             or Ollama (http://localhost:11434/v1)
                   │
-                  ├──▶ MCP server "french-open-data" (this repo)
-                  │       ├─ Recherche d'entreprises API  (companies: Sirene + RNE)
-                  │       ├─ geo.api.gouv.fr              (municipality codes)
-                  │       ├─ data.gouv.fr Tabular API     (DVF property sales)
-                  │       └─ Légifrance via PISTE         (optional, needs credentials)
-                  │
-                  └──▶ official data.gouv.fr MCP server (optional, https://mcp.data.gouv.fr/mcp)
+                  └──▶ MCP server "french-open-data" (this repo, subprocess over stdio)
+                          ├─ Recherche d'entreprises API  (companies: Sirene + RNE)
+                          ├─ geo.api.gouv.fr              (municipality codes)
+                          ├─ data.gouv.fr Tabular API     (DVF property sales)
+                          └─ Légifrance via PISTE         (optional, needs credentials)
 ```
 
-Three separate parts:
+Three separate parts, all on the same machine:
 
-1. **The model** only needs an OpenAI-compatible `/chat/completions` endpoint that supports `tools`.
-2. **The MCP server** holds the code that calls the public APIs. It runs over stdio (same
-   machine as the client) or Streamable HTTP (remote, with a bearer token).
-3. **The MCP client** passes the tool list to the model, runs the tools the model asks for,
-   and sends the results back. Neither Olala nor Ollama connects to an MCP server by itself.
+1. **The model** is served locally by an OpenAI-compatible `/chat/completions` endpoint
+   that supports `tools`.
+2. **The MCP server** holds the code that calls the public APIs. The orchestrator starts it
+   as a subprocess and talks to it over stdio.
+3. **The orchestrator** passes the tool list to the model, runs the tools the model asks
+   for, and sends the results back. Neither Olala nor Ollama connects to an MCP server by
+   itself.
+
+**What leaves the machine.** The questions, the answers and the model stay on the
+machine. The tools need the Internet to fetch the data: each tool call sends the arguments
+chosen by the model (company name or SIREN, postcode, municipality name or INSEE code,
+Légifrance search words) to the public APIs listed above; the DVF tool also reads the
+data.gouv.fr catalogue to find the yearly files. This project's code makes no other
+requests. Installing the model downloads it once from Hugging Face.
 
 ## Tools
 
@@ -46,21 +54,15 @@ All tools are read-only. They return compact JSON to fit small context windows
 
 ## What was checked, and what it changes
 
-The starting point was a proposal to pair a model hosted in France with an MCP server
-calling State APIs (SIRENE, DVF, Légifrance). Each claim was checked against the
-primary source on 2026-11-23/24. Findings that shaped the code:
+Each claim below was checked against the primary source on 2026-11-23/24. Findings that
+shaped the code:
 
-**Olala on OVHcloud AI Endpoints.** The model card and the OVHcloud catalogue page both
-list `Olala-v1.0-mini-7A1B` on AI Endpoints, base URL
-`https://oai.endpoints.kepler.ai.cloud.ovh.net/v1`, with function calling, reasoning and
-streaming, a 32K context and the Apache 2.0 licence. Rate limits on the catalogue page:
-2 requests per minute per IP and per model without a key, 400 per minute per Public Cloud
-project and per model with a key. The catalogue page showed the price as "Free" on
-2026-11-23. The model card states that "Ollama, LM Studio and the official llama.cpp,
-vLLM and mlx-lm cannot load Olala 1.0 mini yet". So "Olala on Ollama" is not possible
-today: with Ollama, use another tool-calling model (the Ollama tool-calling guide uses
-`qwen3`). To run Olala yourself, use OVHcloud's forks (vLLM, llama.cpp, MLX) listed on
-the model card (on a Mac: Quick start, section 3).
+**Running Olala locally.** The model card states that "Ollama, LM Studio and the official
+llama.cpp, vLLM and mlx-lm cannot load Olala 1.0 mini yet" and points to OVHcloud's forks
+(vLLM, llama.cpp, MLX). On a Mac, this project uses the mlx-engine fork (Quick start,
+step 3). With Ollama, use another tool-calling model (the Ollama tool-calling guide uses
+`qwen3`). The model card gives 6.8B parameters in total, about 1B active per token, a 32K
+context and the Apache 2.0 licence.
 
 **The model card's own limits.** It recommends short, single-purpose requests, and lists as
 out of scope "answering from memory where accuracy matters: facts, figures, legal, medical
@@ -68,21 +70,14 @@ or financial information" and decisions with legal effects without review by a q
 person. The orchestrator therefore handles each question separately and instructs the model
 to answer only from tool results.
 
-**The official data.gouv.fr MCP server** (`https://mcp.data.gouv.fr/mcp`) is described as
-experimental by data.gouv.fr. It is read-only and needs no key. Its 10 tools search the
-data.gouv.fr catalogue, read tabular resources and describe third-party APIs (including
-their OpenAPI specifications). It has no tool that queries Sirene, DVF or Légifrance
-directly. This server fills that gap; both can be used together (see `config.example.json`).
-
 **"SIRENE".** The free Recherche d'entreprises API is not full access to the Sirene
 database: it searches companies by name or address, excludes companies that opted out of
-public disclosure, and allows 7 requests per second per IP and 30 per second per ASN. Its
-documentation notes that the ASN limit is likely to be hit from public clouds, which
-matters when the server runs on a VPS. For full Sirene data, the API documentation points
-to https://api.gouv.fr/guides/quelle-api-sirene. Results include the RNE flag `opposition_diffusion_commerciale`
-(objection to the reuse of the company's data for commercial prospecting, GDPR art. 21);
-it is returned as `objects_to_commercial_prospecting` and must be honoured for any
-prospecting use.
+public disclosure, and allows 7 requests per second per IP and 30 per second per ASN. For
+full Sirene data, the API documentation points to
+https://api.gouv.fr/guides/quelle-api-sirene. Results include the RNE flag
+`opposition_diffusion_commerciale` (objection to the reuse of the company's data for
+commercial prospecting, GDPR art. 21); it is returned as `objects_to_commercial_prospecting`
+and must be honoured for any prospecting use.
 
 **DVF.** The DGFiP states that the DVF file contains personal data, that its use must not
 allow re-identification (article R112 A-3 of the Livre des procédures fiscales) and that
@@ -98,24 +93,15 @@ Marseille are published per arrondissement.
 URLs; the production URLs used by default come from consistent third-party sources and can
 be overridden (`LEGIFRANCE_TOKEN_URL`, `LEGIFRANCE_API_URL`).
 
-**Open WebUI** has supported MCP natively since v0.6.31, over Streamable HTTP only.
-Only administrators can add MCP servers, with optional bearer authentication. This
-server's HTTP mode matches that setup.
-
-**OVHcloud "VPS MCP".** This page markets the standard VPS range for hosting MCP servers.
-On 2026-11-23 the lowest tier shown on that page was VPS-2 (4 vCores, 8 GB RAM) from
-€7.21 excl. VAT per month.
-
-**Data location.** Questions and tool results are sent to the model host. The model card
-describes AI Endpoints as "hosted in Europe". Where the model, the MCP server and the
-client run decides where this traffic goes; the public APIs themselves are operated by
-French administrations. AI Endpoints is covered by the OVHcloud Public Cloud Special
-Conditions (Appendix 10, "Specific Conditions – AI Endpoints"): read them for how request
-data is handled.
-
 ## Quick start
 
-Requires Python 3.11 or later (tested with 3.11).
+### 1. Install this project
+
+Requires Python 3.11 or later.
+
+```bash
+git clone https://github.com/Gleaming0427/french-open-data-mcp.git && cd french-open-data-mcp
+```
 
 ```bash
 python3.11 -m venv .venv
@@ -125,55 +111,23 @@ python3.11 -m venv .venv
 source .venv/bin/activate && pip install -e .
 ```
 
-### 1. Check without a model (no API key)
+### 2. Check without a model
 
 ```bash
 python -m unittest discover -s tests -t .
 ```
 
 The tests use a fake OpenAI-compatible server (`tools/fake_llm.py`) and in-memory MCP
-servers. They make no network calls.
+servers. They make no network calls. Messages such as "Tool … failed" are expected: some
+tests check error cases.
 
-### 2. With the Olala API
+### 3. Run Olala on a Mac (mlx-engine)
 
-Create an API key for the Olala API (see the "Getting started" guide linked from the model card),
-then put it in a `.env` file at the root of the project:
+Requirements stated by the MLX model card and the fork: a Mac with Apple Silicon,
+macOS 14 or later, Python 3.11. The model card recommends 16 GB of memory. The `q5e6`
+folder (routed experts in 5 bits, the rest in 6 bits) is 4.9 GB.
 
-```bash
-cp .env.example .env
-```
-
-Open `.env` in an editor and fill in the line `OLALA_API_KEY=`. The file is listed in
-`.gitignore`, so it is not committed. Both the orchestrator and the server read `.env` from
-the current directory at startup (another file: `--env-file PATH`). A variable already set
-in the terminal (`export OLALA_API_KEY=...`) takes precedence over the file. Then:
-
-```bash
-cp config.example.json config.json
-```
-
-```bash
-python -m fr_open_data.orchestrator --config config.json --check
-```
-
-```bash
-python -m fr_open_data.orchestrator --config config.json --question "Median apartment price per m2 in Beaune in 2025?"
-```
-
-Without `--question`, the orchestrator starts an interactive prompt. The `params` block is
-added to every request. The model card recommends `temperature 0.8, top_p 0.9, top_k 40`.
-`reasoning_effort` (`low`, `medium`, `high`) is the parameter shown in the Olala API
-example.
-
-### 3. Olala on a Mac (local, mlx-engine)
-
-Ollama and LM Studio cannot load Olala yet (model card). On a Mac with Apple Silicon,
-OVHcloud's fork of mlx-engine serves it with an OpenAI-compatible API. Requirements stated
-by the MLX model card and the fork: Apple Silicon, macOS 14 or later, Python 3.11. The model
-card recommends 16 GB of memory. The `q5e6` folder (routed experts in 5 bits, the rest in
-6 bits) is 4.9 GB.
-
-In a folder outside this project:
+In a separate terminal and a folder outside this project:
 
 ```bash
 git clone https://github.com/OVHai-LLM/mlx-engine.git && cd mlx-engine
@@ -196,59 +150,75 @@ export MLX_ENGINE_API_KEY=choose-a-value
 ```
 
 On an M1, the MLX model card says to run `export OLALA_MOE_V3=0` before starting the
-server. `--context-length` goes up to 32,768 (model card). The server must stay running
-while the orchestrator is used.
-
-Then, in this project: copy the `olala_mlx_local` block from `_other_llms` into `llm` in
-`config.json`, and put the same `MLX_ENGINE_API_KEY` value in `.env`. Only `--check` has
-been run with this setup so far (2026-11-24); it returned `Model: 'OK'`.
+server. `--context-length` goes up to 32,768 (model card). Keep this terminal open while
+you use the orchestrator. With `--host 127.0.0.1`, the server only accepts connections
+from this Mac.
 
 Server constraints, read in the fork's source code (commit `58083ca`, 2026-11-18): responses
 are streamed only (`stream: true`); `temperature` and `top_k` are required; `tool_choice`
 accepts `auto` or `none`; `reasoning_effort` goes in `chat_template_kwargs`; the request is
 rejected (HTTP 400) when a past tool call has arguments that are not valid JSON, so the
-orchestrator sends `{}` in that case. The `olala_mlx_local` block follows these constraints.
+orchestrator sends `{}` in that case. The default `llm` block of `config.example.json`
+follows these constraints, with the sampling recommended by the model card
+(`temperature 0.8, top_p 0.9, top_k 40`).
 
-### 4. With another local model (Ollama)
+### 4. Ask questions
 
-Copy the `ollama_local` block from `_other_llms` into `llm`. Ollama serves an
-OpenAI-compatible API at `http://localhost:11434/v1` and supports tools and streaming.
-
-### 5. As a remote server (VPS, Open WebUI)
-
-```bash
-export MCP_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
-```
-
-(or set `MCP_TOKEN` in `.env`)
+In this project's folder, with its virtual environment active:
 
 ```bash
-fr-open-data-server --http --host 127.0.0.1 --port 8765 --domain mcp.example.org
+cp config.example.json config.json
 ```
 
-Put an HTTPS reverse proxy in front of `127.0.0.1:8765`. The server refuses to listen
-beyond localhost without `MCP_TOKEN`. In Open WebUI (admin settings, Integrations), add a
-connection of type "MCP (Streamable HTTP)" with URL `https://mcp.example.org/mcp` and
-Bearer authentication using the token.
+```bash
+cp .env.example .env
+```
 
-### 6. In any MCP client over stdio
+Open `.env` in an editor and set `MLX_ENGINE_API_KEY=` to the value chosen in step 3. The
+file is listed in `.gitignore`, so it is not committed. The orchestrator and the server read
+`.env` from the current directory at startup (another file: `--env-file PATH`). A variable
+already set in the terminal takes precedence over the file.
 
-Command: `python -m fr_open_data.server` (run from the virtual environment).
+```bash
+python -m fr_open_data.orchestrator --config config.json --check
+```
+
+```bash
+python -m fr_open_data.orchestrator --config config.json --question "Prix médian des appartements à Beaune en 2025 ?"
+```
+
+Without `--question`, the orchestrator starts an interactive prompt.
+
+Tested on 2026-11-24 with Olala through mlx-engine on a Mac: `--check` returned
+`Model: 'OK'`, and for the question above the model called `find_municipality`, then
+`property_prices` with the INSEE code of Beaune (21054) and the year 2025.
+
+### 5. With another local model (Ollama)
+
+Copy the `ollama_local` block from `_other_llms` into `llm` in `config.json`. Ollama serves
+an OpenAI-compatible API at `http://localhost:11434/v1` and supports tools and streaming.
+The model must support tool calling.
+
+### 6. In another MCP client on the same machine
+
+Command: `python -m fr_open_data.server` (run from the virtual environment). The server
+speaks MCP over stdio.
 
 ## Configuration (`config.json`)
 
 | Key | Meaning |
 |---|---|
-| `llm.base_url`, `llm.model` | OpenAI-compatible endpoint and model id |
-| `llm.api_key_env` | Name of the environment variable holding the key (never the key itself); it can be set in `.env` |
-| `llm.stream` | `true` by default (the Olala MLX server only accepts streaming) |
-| `llm.params` | Added to every request (sampling, reasoning effort) |
-| `mcp_servers[].command` | Start the server as a subprocess (stdio) |
-| `mcp_servers[].url`, `token_env` | Connect over Streamable HTTP, optional bearer token |
+| `llm.base_url`, `llm.model` | Local OpenAI-compatible endpoint and model id (mlx-engine serves one model and ignores the id) |
+| `llm.api_key_env` | Name of the environment variable holding the key (never the key itself); it can be set in `.env`. `null` for Ollama |
+| `llm.stream` | `true` (mlx-engine only accepts streaming) |
+| `llm.max_tokens` | Maximum length of each model reply (default 4096) |
+| `llm.params` | Added to every request (sampling, `chat_template_kwargs`) |
+| `mcp_servers[].command` | Command that starts the MCP server as a subprocess (stdio) |
 | `mcp_servers[].tools` | Keep only these tools (small models choose better among few tools) |
+| `system_prompt` | Replaces the default instructions given to the model |
 | `max_turns`, `max_result_chars` | Limits of the tool loop |
 
-An MCP server that cannot be reached is skipped with a warning. Tool errors are passed to
+An MCP server that cannot be started is skipped with a warning. Tool errors are passed to
 the model as text, so it can report them instead of guessing.
 
 ## Limits
@@ -261,11 +231,11 @@ the model as text, so it can report them instead of guessing.
   during development).
 - **The data.gouv.fr Tabular API can be briefly unavailable.** On 2026-11-24 it answered
   HTTP 503 (PostgREST error PGRST002) for the DVF 2025 file while the other DVF files
-  answered; the same query worked again shortly after. Each request is retried once; if it still fails, the tool returns the error and the model reports it.
-- **Small models and tools.** Olala mini is a small mixture-of-experts model (6.8B
-  parameters in total; about 1B active according to the model card, 1.5B according to the
-  OVHcloud catalogue). Its tool-call reliability on these tools has not been measured here. Restrict the tool list per server
-  if the model picks the wrong tool.
+  answered; the same query worked again shortly after. Each request is retried once; if it
+  still fails, the tool returns the error and the model reports it.
+- **Small model.** Olala mini has about 1B active parameters per token (model card). Its
+  tool-call reliability on these tools has not been measured beyond the test above.
+  Restrict the tool list per server if the model picks the wrong tool.
 - **Not advice.** Answers are not legal, tax or financial advice. Check important
   answers against the cited source.
 
@@ -273,19 +243,19 @@ the model as text, so it can report them instead of guessing.
 
 ```
 fr_open_data/
-  server.py          MCP server (stdio or Streamable HTTP + bearer token)
+  server.py          MCP server (stdio)
   companies.py       Recherche d'entreprises API
   municipalities.py  geo.api.gouv.fr
   dvf.py             DVF via the data.gouv.fr Tabular API
   legifrance.py      Légifrance via PISTE (optional, untested live)
-  orchestrator.py    tool loop between an OpenAI-compatible LLM and MCP servers
+  orchestrator.py    tool loop between a local OpenAI-compatible LLM and MCP servers
   llm.py             streaming chat client (standard library)
   http.py            HTTP helper (User-Agent, one retry on 429/502/503/504 and network errors)
   envfile.py         .env reader (standard library)
 tools/fake_llm.py    fake OpenAI-compatible server for tests
 tests/               offline tests (unittest)
 config.example.json
-.env.example         template for .env (API keys, tokens)
+.env.example         template for .env (keys)
 ```
 
 ## Sources (consulted 2026-11-23/24)
@@ -293,16 +263,11 @@ config.example.json
 - Olala model card: https://huggingface.co/OVHaiLLM/Olala-v1.0-mini-7A1B
 - Olala MLX model card: https://huggingface.co/OVHaiLLM/Olala-v1.0-mini-7A1B-MLX
 - OVHcloud's mlx-engine fork: https://github.com/OVHai-LLM/mlx-engine
-- OVHcloud catalogue, Olala: https://www.ovhcloud.com/en/public-cloud/ai-endpoints/catalog/olala-v1-0-mini-7a1b/
-- AI Endpoints, function calling: https://docs.ovhcloud.com/en/guides/public-cloud/ai-machine-learning/ai-endpoints-function-calling
-- AI Endpoints, catalogue API: https://docs.ovhcloud.com/en/guides/public-cloud/ai-machine-learning/ai-endpoints-catalog-api
-- OVHcloud VPS MCP: https://www.ovhcloud.com/fr/vps/vps-mcp/
-- data.gouv.fr MCP server: https://github.com/datagouv/datagouv-mcp and https://guides.data.gouv.fr/intelligence-artificielle/le-serveur-mcp-de-data.gouv.fr
 - Recherche d'entreprises API: https://recherche-entreprises.api.gouv.fr/openapi.json and https://www.data.gouv.fr/dataservices/api-recherche-dentreprises
 - DVF (DGFiP): https://www.data.gouv.fr/datasets/demandes-de-valeurs-foncieres/
 - DVF géolocalisées: https://www.data.gouv.fr/datasets/demandes-de-valeurs-foncieres-geolocalisees/
 - Légifrance on data.gouv.fr: https://www.data.gouv.fr/dataservices/legifrance
 - Légifrance API specification: https://github.com/betagouv/api_gouv_swaggers (`swaggers/api-legifrance-v2.json`)
+- PostgREST error codes: https://github.com/PostgREST/postgrest/blob/main/docs/references/errors.rst
 - Ollama, tool calling and OpenAI compatibility: https://docs.ollama.com/capabilities/tool-calling and https://docs.ollama.com/api/openai-compatibility
-- Open WebUI, MCP: https://docs.openwebui.com/features/extensibility/mcp
 - MCP Python SDK (v2): https://pypi.org/project/mcp/

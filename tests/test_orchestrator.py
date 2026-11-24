@@ -9,8 +9,8 @@ from mcp import Client
 from mcp.server.mcpserver import MCPServer
 
 from fr_open_data import llm
-from fr_open_data.orchestrator import Orchestrator
-from fr_open_data.server import RequireToken, build_server
+from fr_open_data.orchestrator import Orchestrator, client_from_config
+from fr_open_data.server import build_server
 from tools import fake_llm
 
 
@@ -109,7 +109,8 @@ class TestOrchestrator(FakeLlm, unittest.IsolatedAsyncioTestCase):
             self.assertIn("JSON", text)
 
     async def test_unreachable_server_is_skipped(self):
-        clients = {"ok": Client(test_server()), "down": Client("http://127.0.0.1:9/mcp", read_timeout_seconds=5)}
+        down = client_from_config({"name": "down", "command": ["fr-open-data-no-such-command"]})
+        clients = {"ok": Client(test_server()), "down": down}
         async with Orchestrator(self.cfg(), clients) as o:
             self.assertIn("down", o.unavailable)
             self.assertEqual(sorted(o.routes), ["company_profile", "search_companies"])
@@ -123,25 +124,6 @@ class TestOrchestrator(FakeLlm, unittest.IsolatedAsyncioTestCase):
             r = await c.call_tool("property_prices", {"insee_code": "75056"})
         self.assertTrue(r.is_error)
         self.assertIn("arrondissement", r.content[0].text)
-
-
-class TestToken(unittest.IsolatedAsyncioTestCase):
-    async def test_token_required(self):
-        reached = []
-
-        async def app(scope, receive, send):
-            reached.append(scope["path"])
-
-        mw = RequireToken(app, "s3cret")
-        sent = []
-
-        async def send(msg):
-            sent.append(msg)
-
-        await mw({"type": "http", "path": "/mcp", "headers": []}, None, send)
-        self.assertEqual(sent[0]["status"], 401)
-        await mw({"type": "http", "path": "/mcp", "headers": [(b"authorization", b"Bearer s3cret")]}, None, send)
-        self.assertEqual(reached, ["/mcp"])
 
 
 if __name__ == "__main__":
