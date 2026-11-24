@@ -1,0 +1,45 @@
+{
+  "started": "2026-11-24T16:08:32+00:00",
+  "label": "Olala q5e6, M2 Max, tools v3, held-out 2",
+  "server_version": "mlx-engine (OVHcloud fork) 58083ca",
+  "version": "0.1.0",
+  "commit": "1bdba5b",
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.14.6",
+    "chip": "Apple M2 Max",
+    "memory_gb": 32,
+    "macos": "27.0.1",
+    "model": "MacBook Pro",
+    "model_id": "Mac14,5",
+    "cpu_cores": "12 (8 Performance and 4 Efficiency)",
+    "gpu_cores": "30"
+  },
+  "llm": {
+    "base_url": "http://127.0.0.1:8000/v1",
+    "model": "olala",
+    "stream": true,
+    "max_tokens": 4096,
+    "params": {
+      "temperature": 0.8,
+      "top_p": 0.9,
+      "top_k": 40,
+      "chat_template_kwargs": {
+        "reasoning_effort": "low"
+      }
+    }
+  },
+  "server_health": {
+    "status": "ok"
+  },
+  "max_turns": 6,
+  "runs": 3,
+  "questions_file": "bench/questions_holdout2.json",
+  "tools": [
+    "company_profile",
+    "find_municipality",
+    "property_prices",
+    "search_companies"
+  ],
+  "finished": "2026-11-24T16:22:35+00:00"
+}
