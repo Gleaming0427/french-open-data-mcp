@@ -230,7 +230,7 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
         f"- Machine: {machine_text(meta['machine'])}",
         *([f"- Model server: {meta['server_version']}"] if meta.get("server_version") else []),
         f"- Code: french-open-data-mcp {meta['version']}, commit `{meta.get('commit') or '?'}`",
-        f"- Questions: `{Path(meta.get('questions_file') or 'questions.json').name}`, "
+        f"- Questions: {', '.join(f'`{Path(f).name}`' for f in _question_files(meta.get('questions_file')) or ['questions.json'])}, "
         f"{len({r['id'] for r in records})} questions",
         f"- Runs: {meta['runs']} per question, {len(records)} in total",
         *([f"- Checks re-applied on {meta['rescored']['date']} with `{meta['rescored']['questions_file']}` "
@@ -321,7 +321,23 @@ def rescore(record: dict[str, Any], q: dict[str, Any]) -> bool:
     return True
 
 
-def resummarize(path: str, questions_file: str | None) -> None:
+def load_questions(paths: list[str]) -> list[dict[str, Any]]:
+    """Questions of one or more files; ids must be unique across the files."""
+    questions: list[dict[str, Any]] = []
+    for path in paths:
+        questions += json.loads(Path(path).read_text(encoding="utf-8"))["questions"]
+    ids = [q["id"] for q in questions]
+    duplicates = sorted({i for i in ids if ids.count(i) > 1})
+    if duplicates:
+        raise ValueError(f"question ids used twice: {', '.join(duplicates)}")
+    return questions
+
+
+def _question_files(value: Any) -> list[str]:
+    return [value] if isinstance(value, str) else list(value or [])
+
+
+def resummarize(path: str, questions_file: str | list[str] | None) -> None:
     """Rebuild summary.md from runs.jsonl and meta.json, re-applying the checks of the questions file."""
     root = Path(path)
     if path == "latest":
@@ -331,10 +347,11 @@ def resummarize(path: str, questions_file: str | None) -> None:
         root = dirs[-1]
     meta = json.loads((root / "meta.json").read_text(encoding="utf-8"))
     records = [json.loads(line) for line in (root / "runs.jsonl").read_text(encoding="utf-8").splitlines() if line]
-    qfile = questions_file or meta.get("questions_file") or str(HERE / "questions.json")
-    if not Path(qfile).exists():  # results copied from another machine
-        qfile = str(HERE / Path(qfile).name)
-    questions = {q["id"]: q for q in json.loads(Path(qfile).read_text(encoding="utf-8"))["questions"]}
+    qfiles = _question_files(questions_file or meta.get("questions_file")) or [str(HERE / "questions.json")]
+    # results copied from another machine: look for the files in bench/
+    qfiles = [f if Path(f).exists() else str(HERE / Path(f).name) for f in qfiles]
+    qfile = ", ".join(Path(f).name for f in qfiles)
+    questions = {q["id"]: q for q in load_questions(qfiles)}
     rescored = 0
     for r in records:
         if r["id"] in questions:
@@ -486,7 +503,9 @@ async def _run(args: argparse.Namespace, cfg: dict[str, Any], questions: list[di
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="config.json")
-    ap.add_argument("--questions", default=str(HERE / "questions.json"))
+    ap.add_argument("--questions", nargs="+", default=[str(HERE / "questions.json")],
+                    help="one or more question files (ids must be unique across them)")
+    ap.add_argument("--model", help="replace llm.model of the config (e.g. an Ollama model name)")
     ap.add_argument("--runs", type=int, default=3, help="runs per question (default 3)")
     ap.add_argument("--only", help="comma-separated question ids")
     ap.add_argument("--label", help="free text stored with the results, e.g. model file and machine")
@@ -500,16 +519,20 @@ def main(argv: list[str] | None = None) -> None:
         resummarize(args.summarize, args.questions if "--questions" in (argv or sys.argv) else None)
         return
     if args.validate:
-        questions = json.loads(Path(args.questions).read_text(encoding="utf-8"))["questions"]
-        sys.exit(0 if anyio.run(validate, questions) else 1)
+        sys.exit(0 if anyio.run(validate, load_questions(args.questions)) else 1)
     try:
         envfile.load(args.env_file)
         cfg = load_config(args.config)
         check_config(cfg)
+        if args.model:
+            cfg["llm"]["model"] = args.model
         warn_if_remote(cfg["llm"])
     except (OSError, ValueError) as e:
         sys.exit(f"{args.config}: {e}")
-    questions = json.loads(Path(args.questions).read_text(encoding="utf-8"))["questions"]
+    try:
+        questions = load_questions(args.questions)
+    except (OSError, ValueError) as e:
+        sys.exit(f"questions: {e}")
     if args.only:
         wanted = set(args.only.split(","))
         questions = [q for q in questions if q["id"] in wanted]
@@ -531,7 +554,8 @@ def main(argv: list[str] | None = None) -> None:
         "server_health": server_health(cfg["llm"]),
         "max_turns": cfg.get("max_turns", 6),
         "runs": args.runs,
-        "questions_file": repo_relative(args.questions),
+        "questions_file": (repo_relative(args.questions[0]) if len(args.questions) == 1
+                           else [repo_relative(q) for q in args.questions]),
     }
     records = anyio.run(_run, args, cfg, questions, out_dir, meta)
     meta["finished"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")

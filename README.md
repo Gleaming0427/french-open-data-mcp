@@ -198,8 +198,9 @@ Tested on 2026-11-24 with Olala through mlx-engine on a Mac: `--check` returned
 ### 5. With another local model (Ollama)
 
 Copy the `ollama_local` block from `_other_llms` into `llm` in `config.json`. Ollama serves
-an OpenAI-compatible API at `http://localhost:11434/v1` and supports tools and streaming.
-The model must support tool calling.
+an OpenAI-compatible API at `http://localhost:11434/v1` that supports tools; the block turns
+streaming off and omits `tool_choice`, and the context length must be raised with a
+Modelfile (see section 8). The model must support tool calling.
 
 ### 6. In another MCP client on the same machine
 
@@ -247,6 +248,36 @@ The failures table lists the calls made and the start of each wrong answer; `pyt
 rebuilds `summary.md` of the latest results with the current version of the script and
 re-applies the checks of the questions file to the stored answers (the summary written
 during the run is kept as `summary-as-run.md`).
+
+### 8. Compare with another local model (Ollama)
+
+The benchmark can measure any model served by Ollama on the same questions, with
+`bench/config.ollama.json` (same MCP server and limits as `config.example.json`). From the
+Ollama documentation (consulted 2026-11-24): its OpenAI-compatible endpoint supports tools
+but lists `tool_choice` as unsupported, so the config omits it; streaming with tools is
+documented only for the native API, so the config turns streaming off; the default context
+is 4k tokens below 24 GiB of VRAM, and the OpenAI-compatible endpoint cannot change it per
+request: a model with `PARAMETER num_ctx` must be created. The Olala server ran with a
+context of 8192 tokens, so:
+
+```bash
+ollama pull qwen3:8b
+```
+
+```bash
+printf 'FROM qwen3:8b\nPARAMETER num_ctx 8192\n' > Modelfile.qwen3-8k && ollama create qwen3-8b-ctx8k -f Modelfile.qwen3-8k
+```
+
+Then run the 24 held-out questions (both files in one run):
+
+```bash
+python -m bench.run --config bench/config.ollama.json --model qwen3-8b-ctx8k --runs 3 --questions bench/questions_holdout.json bench/questions_holdout2.json --label "qwen3:8b (Ollama), held-out 1+2" --server-version "$(ollama --version)"
+```
+
+What differs from the Olala runs, to state with any comparison: Ollama runs GGUF models on
+its own engine and Olala ran on MLX, so speeds are not comparable; sampling and thinking use
+each model's defaults in Ollama (Olala used the model card's sampling and
+`reasoning_effort` low); the tool descriptions were adjusted while testing Olala.
 
 ### Raw results
 
@@ -387,6 +418,7 @@ fr_open_data/
 bench/run.py         benchmark: fixed questions, checks, results to publish
 bench/questions.json the questions and what each answer must contain
 bench/questions_holdout*.json  held-out questions (not used to adjust the tools)
+bench/config.ollama.json      configuration for measuring a model served by Ollama
 tools/fake_llm.py    fake OpenAI-compatible server for tests
 tests/               offline tests (unittest)
 config.example.json

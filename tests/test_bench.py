@@ -158,6 +158,22 @@ class TestChecks(unittest.TestCase):
         self.assertEqual(run.check_validation(q, refused, True, "DVF does not cover Alsace")[0], [])
         self.assertTrue(run.check_validation(q, refused, False, good)[0])
 
+    def test_load_questions_and_ollama_config(self):
+        from fr_open_data.orchestrator import check_config, remote_llm_host
+        both = run.load_questions([str(run.HERE / "questions_holdout.json"), str(run.HERE / "questions_holdout2.json")])
+        self.assertEqual(len(both), 24)
+        with self.assertRaisesRegex(ValueError, "used twice"):
+            run.load_questions([str(run.HERE / "questions.json")] * 2)
+        cfg = json.loads((run.HERE / "config.ollama.json").read_text(encoding="utf-8"))
+        check_config(cfg)
+        self.assertIsNone(remote_llm_host(cfg["llm"]))
+        self.assertIsNone(cfg["llm"]["tool_choice"])
+        meta = {"started": "x", "version": "0.1.0", "runs": 1, "llm": {"model": "m", "base_url": "u"},
+                "machine": {"platform": "test"},
+                "questions_file": ["bench/questions_holdout.json", "bench/questions_holdout2.json"]}
+        text = run.summarize([], meta)
+        self.assertIn("`questions_holdout.json`, `questions_holdout2.json`", text)
+
     def test_holdout2_file(self):
         data = json.loads((Path(run.HERE) / "questions_holdout2.json").read_text(encoding="utf-8"))
         self.assertEqual(len(data["questions"]), 16)

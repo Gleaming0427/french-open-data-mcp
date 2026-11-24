@@ -168,7 +168,11 @@ class Orchestrator:
         payload.update(self.cfg.get("params") or {})
         if self.tools:
             payload["tools"] = self.tools
-            payload["tool_choice"] = "auto"  # accepted by mlx-engine and Ollama
+            # "auto" by default (mlx-engine accepts auto or none). llm.tool_choice = null omits it:
+            # Ollama's OpenAI-compatible endpoint lists tool_choice as unsupported.
+            tool_choice = self.cfg.get("tool_choice", "auto")
+            if tool_choice:
+                payload["tool_choice"] = tool_choice
         key = os.environ.get(self.cfg["api_key_env"]) if self.cfg.get("api_key_env") else None
         return llm.chat(self.cfg["base_url"], payload, key, self.cfg.get("timeout_s", 300), self.cfg.get("stream", True))
 

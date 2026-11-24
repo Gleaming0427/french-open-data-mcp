@@ -19,8 +19,9 @@
       "base_url": "http://localhost:11434/v1",
       "api_key_env": null,
       "model": "qwen3",
-      "stream": true,
-      "params": {"temperature": 0.2}
+      "stream": false,
+      "tool_choice": null,
+      "params": {}
     },
     "fake_llm_for_tests": {
       "base_url": "http://127.0.0.1:8099/v1",

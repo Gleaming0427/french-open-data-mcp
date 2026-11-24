@@ -1,0 +1,25 @@
+{
+  "_note": "Configuration for measuring a model served by Ollama with bench/run.py: python -m bench.run --config bench/config.ollama.json --model NAME ... Same MCP server and limits as config.example.json. Ollama's OpenAI-compatible endpoint lists tool_choice as unsupported (omitted here) and documents streaming with tools only for its native API (streaming off here). Sampling: the model's defaults in Ollama. Context length: create a model with PARAMETER num_ctx 8192, as the Olala server ran with --context-length 8192 (see README).",
+  "llm": {
+    "base_url": "http://localhost:11434/v1",
+    "api_key_env": null,
+    "model": "qwen3-8b-ctx8k",
+    "stream": false,
+    "tool_choice": null,
+    "max_tokens": 4096,
+    "params": {}
+  },
+  "mcp_servers": [
+    {
+      "name": "french-open-data",
+      "command": [
+        "python3",
+        "-m",
+        "fr_open_data.server"
+      ]
+    }
+  ],
+  "max_turns": 6,
+  "max_tool_calls": 10,
+  "max_result_chars": 8000
+}

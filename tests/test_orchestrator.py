@@ -133,6 +133,20 @@ class TestOrchestrator(FakeLlm, unittest.IsolatedAsyncioTestCase):
         self.assertTrue(a.tool_calls[0].error)
         self.assertIn("limit of 0 tool calls", a.text)
 
+    async def test_tool_choice_can_be_omitted(self):
+        from unittest import mock
+        payloads = []
+
+        def chat(base_url, payload, *args, **kwargs):
+            payloads.append(payload)
+            return llm.Reply(content="ok")
+
+        with mock.patch.object(llm, "chat", side_effect=chat):
+            for cfg, expected in (({}, "auto"), ({"tool_choice": None}, None)):
+                async with Orchestrator({**self.cfg(), **cfg}, {"t": Client(test_server())}) as o:
+                    await o.answer("x")
+                self.assertEqual(payloads[-1].get("tool_choice"), expected)
+
     def test_remote_llm_host(self):
         self.assertIsNone(remote_llm_host({"base_url": "http://127.0.0.1:8000/v1"}))
         self.assertIsNone(remote_llm_host({"base_url": "http://localhost:11434/v1"}))
