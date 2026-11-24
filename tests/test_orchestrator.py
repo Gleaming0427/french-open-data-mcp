@@ -89,6 +89,16 @@ class TestOrchestrator(FakeLlm, unittest.IsolatedAsyncioTestCase):
         self.assertTrue(a.tool_calls[0].error)
         self.assertIn("ERROR", a.text)
 
+    async def test_invalid_arguments_do_not_break_the_loop(self):
+        # The model writes arguments that are not JSON: the tool reports an error and the
+        # next request must still be accepted by a server that checks past tool calls.
+        async with Orchestrator(self.cfg(), {"t": Client(test_server())}) as o:
+            a = await o.answer("invalid arguments")
+        self.assertIsNone(a.error)
+        self.assertEqual(a.turns, 2)
+        self.assertTrue(a.tool_calls[0].error)
+        self.assertIn("invalid JSON arguments", a.text)
+
     async def test_name_collisions_are_prefixed(self):
         clients = {"a": Client(test_server("a")), "b": Client(test_server("b"))}
         async with Orchestrator(self.cfg(), clients, tool_filters={"b": ["company_profile"]}) as o:

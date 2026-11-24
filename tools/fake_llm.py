@@ -5,10 +5,13 @@ Deterministic behaviour:
   * question with 5 digits and the word "price"  -> property_prices(insee_code)
   * question with 9 or 14 digits                 -> company_profile(siren)
   * otherwise                                    -> search_companies(text=question)
-  (if the chosen tool is not offered, it takes the first tool in the list);
+  (if the chosen tool is not offered, it takes the first tool in the list;
+  if the question contains "invalid arguments", the call carries arguments that are not JSON);
 - then it answers by quoting the start of the last tool result.
 
-The stream mimics the Olala MLX server (mlx-engine): reasoning first, then the tool call in two pieces.
+The stream sends reasoning first, then the tool call in two pieces. Like the Olala MLX
+server (mlx-engine), it answers HTTP 400 when a past tool call in the conversation has
+arguments that are not valid JSON.
 
   python tools/fake_llm.py --port 8099
   # config: "base_url": "http://127.0.0.1:8099/v1", "model": "fake"
@@ -60,6 +63,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(401, {"error": "unauthorized"})
         req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         msgs = req.get("messages") or []
+        for m in msgs:
+            for tc in m.get("tool_calls") or []:
+                try:
+                    json.loads(tc["function"]["arguments"])
+                except (TypeError, ValueError):
+                    return self._json(400, {"error": {"message": "Tool call arguments must be a JSON object."}})
         question = next((m["content"] for m in msgs if m["role"] == "user"), "")
         results = [m["content"] for m in msgs if m["role"] == "tool"]
         tools = [t["function"]["name"] for t in req.get("tools") or []]
@@ -69,7 +78,7 @@ class Handler(BaseHTTPRequestHandler):
             text = f"According to the tool: {results[-1][:120]}" if results else "OK"
         else:
             name, args = choose_call(question, tools)
-            call = (name, json.dumps(args, ensure_ascii=False))
+            call = (name, '{"text": ' if "invalid arguments" in question.lower() else json.dumps(args, ensure_ascii=False))
 
         if not req.get("stream"):
             msg: dict[str, Any] = {"role": "assistant", "content": None if call else text,

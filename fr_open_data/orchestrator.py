@@ -99,6 +99,17 @@ def result_text(res: Any) -> str:
     return "\n".join(p for p in parts if p)
 
 
+def tool_arguments(raw: str | None) -> dict[str, Any] | None:
+    """Decode the arguments of a tool call: a dict, or None if they are not a JSON object."""
+    if not (raw or "").strip():
+        return {}
+    try:
+        args = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return args if isinstance(args, dict) else None
+
+
 def source_of(text: str) -> str | None:
     try:
         d = json.loads(text)
@@ -161,9 +172,8 @@ class Orchestrator:
             text = f"ERROR: unknown tool {name!r}. Available tools: {', '.join(self.routes)}."
             return text, ToolCall("?", name, arguments, True, None, text[:200])
         server, original = self.routes[name]
-        try:
-            args = json.loads(arguments) if (arguments or "").strip() else {}
-        except json.JSONDecodeError:
+        args = tool_arguments(arguments)
+        if args is None:
             text = "ERROR: invalid JSON arguments. Call the tool again with a valid JSON object."
             return text, ToolCall(server, original, arguments, True, None, text)
         try:
@@ -198,8 +208,11 @@ class Orchestrator:
             calls = []
             for i, c in enumerate(reply.tool_calls):
                 c["id"] = c.get("id") or f"call_{turn}_{i}"
-                calls.append({"id": c["id"], "type": "function",
-                              "function": {"name": c["name"], "arguments": c["arguments"] or "{}"}})
+                # Arguments sent back must be a JSON object: the Olala MLX server (mlx-engine)
+                # rejects the whole request otherwise (HTTP 400). The tool result reports the error.
+                args = tool_arguments(c["arguments"])
+                calls.append({"id": c["id"], "type": "function", "function": {
+                    "name": c["name"], "arguments": json.dumps({} if args is None else args, ensure_ascii=False)}})
             messages.append({"role": "assistant", "content": llm.strip_reasoning(reply.content), "tool_calls": calls})
             for c in reply.tool_calls:
                 text, trace = await self._execute(c["name"], c["arguments"])

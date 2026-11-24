@@ -60,7 +60,7 @@ project and per model with a key. The catalogue page showed the price as "Free" 
 vLLM and mlx-lm cannot load Olala 1.0 mini yet". So "Olala on Ollama" is not possible
 today: with Ollama, use another tool-calling model (the Ollama tool-calling guide uses
 `qwen3`). To run Olala yourself, use OVHcloud's forks (vLLM, llama.cpp, MLX) listed on
-the model card.
+the model card (on a Mac: Quick start, section 3).
 
 **The model card's own limits.** It recommends short, single-purpose requests, and lists as
 out of scope "answering from memory where accuracy matters: facts, figures, legal, medical
@@ -165,12 +165,56 @@ added to every request. The model card recommends `temperature 0.8, top_p 0.9, t
 `reasoning_effort` (`low`, `medium`, `high`) is the parameter shown in the Olala API
 example.
 
-### 3. With a local model (Ollama)
+### 3. Olala on a Mac (local, mlx-engine)
+
+Ollama and LM Studio cannot load Olala yet (model card). On a Mac with Apple Silicon,
+OVHcloud's fork of mlx-engine serves it with an OpenAI-compatible API. Requirements stated
+by the MLX model card and the fork: Apple Silicon, macOS 14 or later, Python 3.11. The model
+card recommends 16 GB of memory. The `q5e6` folder (routed experts in 5 bits, the rest in
+6 bits) is 4.9 GB.
+
+In a folder outside this project:
+
+```bash
+git clone https://github.com/OVHai-LLM/mlx-engine.git && cd mlx-engine
+```
+
+```bash
+python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
+
+```bash
+.venv/bin/hf download OVHaiLLM/Olala-v1.0-mini-7A1B-MLX --include "q5e6/*" --local-dir ./olala-mlx
+```
+
+```bash
+export MLX_ENGINE_API_KEY=choose-a-value
+```
+
+```bash
+.venv/bin/python -m mlx_engine.server --model ./olala-mlx/q5e6 --host 127.0.0.1 --port 8000 --context-length 8192 --parallel-sessions 1
+```
+
+On an M1, the MLX model card says to run `export OLALA_MOE_V3=0` before starting the
+server. `--context-length` goes up to 32,768 (model card). The server must stay running
+while the orchestrator is used.
+
+Then, in this project: copy the `olala_mlx_local` block from `_other_llms` into `llm` in
+`config.json`, and put the same `MLX_ENGINE_API_KEY` value in `.env`. Only `--check` has
+been run with this setup so far (2026-11-24); it returned `Model: 'OK'`.
+
+Server constraints, read in the fork's source code (commit `58083ca`, 2026-11-18): responses
+are streamed only (`stream: true`); `temperature` and `top_k` are required; `tool_choice`
+accepts `auto` or `none`; `reasoning_effort` goes in `chat_template_kwargs`; the request is
+rejected (HTTP 400) when a past tool call has arguments that are not valid JSON, so the
+orchestrator sends `{}` in that case. The `olala_mlx_local` block follows these constraints.
+
+### 4. With another local model (Ollama)
 
 Copy the `ollama_local` block from `_other_llms` into `llm`. Ollama serves an
 OpenAI-compatible API at `http://localhost:11434/v1` and supports tools and streaming.
 
-### 4. As a remote server (VPS, Open WebUI)
+### 5. As a remote server (VPS, Open WebUI)
 
 ```bash
 export MCP_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
@@ -187,7 +231,7 @@ beyond localhost without `MCP_TOKEN`. In Open WebUI (admin settings, Integration
 connection of type "MCP (Streamable HTTP)" with URL `https://mcp.example.org/mcp` and
 Bearer authentication using the token.
 
-### 5. In any MCP client over stdio
+### 6. In any MCP client over stdio
 
 Command: `python -m fr_open_data.server` (run from the virtual environment).
 
@@ -244,6 +288,8 @@ config.example.json
 ## Sources (consulted 2026-11-23/24)
 
 - Olala model card: https://huggingface.co/OVHaiLLM/Olala-v1.0-mini-7A1B
+- Olala MLX model card: https://huggingface.co/OVHaiLLM/Olala-v1.0-mini-7A1B-MLX
+- OVHcloud's mlx-engine fork: https://github.com/OVHai-LLM/mlx-engine
 - OVHcloud catalogue, Olala: https://www.ovhcloud.com/en/public-cloud/ai-endpoints/catalog/olala-v1-0-mini-7a1b/
 - AI Endpoints, function calling: https://docs.ovhcloud.com/en/guides/public-cloud/ai-machine-learning/ai-endpoints-function-calling
 - AI Endpoints, catalogue API: https://docs.ovhcloud.com/en/guides/public-cloud/ai-machine-learning/ai-endpoints-catalog-api
