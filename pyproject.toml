@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "french-open-data-mcp"
+version = "0.1.0"
+description = "MCP server for French public data (companies, property prices, Légifrance) and an orchestrator for any OpenAI-compatible LLM, such as Olala."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=2.3,<3",
+    "uvicorn>=0.30",
+]
+
+[project.scripts]
+fr-open-data-server = "fr_open_data.server:main"
+fr-open-data-agent = "fr_open_data.orchestrator:main"
+
+[tool.setuptools]
+packages = ["fr_open_data"]
