@@ -259,6 +259,9 @@ the model as text, so it can report them instead of guessing.
   the price per m² of houses includes the land. It is not an official index.
   A large arrondissement takes about 30 s (Paris 11th, 2025: about 6,400 rows, measured
   during development).
+- **The data.gouv.fr Tabular API can be briefly unavailable.** On 2026-11-24 it answered
+  HTTP 503 (PostgREST error PGRST002) for the DVF 2025 file while the other DVF files
+  answered; the same query worked again shortly after. Each request is retried once; if it still fails, the tool returns the error and the model reports it.
 - **Small models and tools.** Olala mini is a small mixture-of-experts model (6.8B
   parameters in total; about 1B active according to the model card, 1.5B according to the
   OVHcloud catalogue). Its tool-call reliability on these tools has not been measured here. Restrict the tool list per server
@@ -277,7 +280,7 @@ fr_open_data/
   legifrance.py      Légifrance via PISTE (optional, untested live)
   orchestrator.py    tool loop between an OpenAI-compatible LLM and MCP servers
   llm.py             streaming chat client (standard library)
-  http.py            HTTP helper (User-Agent, 429/Retry-After, one retry)
+  http.py            HTTP helper (User-Agent, one retry on 429/502/503/504 and network errors)
   envfile.py         .env reader (standard library)
 tools/fake_llm.py    fake OpenAI-compatible server for tests
 tests/               offline tests (unittest)

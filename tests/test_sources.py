@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from fr_open_data import companies, dvf, legifrance
+from fr_open_data import companies, dvf, http, legifrance
 
 # Fictitious result in the Recherche d'entreprises API format (made-up names).
 FAKE_RESULT = {
@@ -32,6 +32,34 @@ FAKE_RESULT = {
     "complements": {"liste_idcc": ["3248"], "est_rge": True, "est_bio": False, "est_ess": None},
     "tva": ["FR00123456789"],
 }
+
+
+class TestHttp(unittest.TestCase):
+    def _error(self, code):
+        import io
+        import urllib.error
+        return urllib.error.HTTPError("https://example.org", code, "x", {}, io.BytesIO(b'{"detail": "PGRST002"}'))
+
+    def _ok(self):
+        resp = mock.MagicMock()
+        resp.__enter__.return_value.read.return_value = b'{"data": []}'
+        return resp
+
+    @mock.patch("fr_open_data.http.time.sleep")
+    def test_unavailable_is_retried_once(self, sleep):
+        with mock.patch("urllib.request.urlopen", side_effect=[self._error(503), self._ok()]):
+            self.assertEqual(http.request_json("https://example.org"), {"data": []})
+        sleep.assert_called_once_with(2.0)
+        with mock.patch("urllib.request.urlopen", side_effect=[self._error(503), self._error(503)]):
+            with self.assertRaisesRegex(http.SourceError, r"temporarily unavailable \(HTTP 503\).*PGRST002"):
+                http.request_json("https://example.org", source_name="Tabular API")
+
+    @mock.patch("fr_open_data.http.time.sleep")
+    def test_other_errors_are_not_retried(self, sleep):
+        with mock.patch("urllib.request.urlopen", side_effect=[self._error(404)]):
+            with self.assertRaisesRegex(http.SourceError, "HTTP 404"):
+                http.request_json("https://example.org")
+        sleep.assert_not_called()
 
 
 class TestCompanies(unittest.TestCase):

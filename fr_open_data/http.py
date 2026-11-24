@@ -2,8 +2,10 @@
 
 - An explicit User-Agent header is sent, as recommended by the
   Recherche d'entreprises API documentation.
-- On HTTP 429, the Retry-After header is honoured once (capped wait), then the
-  error is raised.
+- On HTTP 429, 502, 503 or 504, the request is retried once after the Retry-After
+  delay (capped; 1 s for 429 and 2 s for the others when the header is absent), then
+  the error is raised. Observed on 2026-11-24: the data.gouv.fr Tabular API answered
+  503 (PostgREST PGRST002) for a short time, and a DVF query makes several requests.
 - On a network failure, the request is retried once after 1 s.
 """
 
@@ -21,17 +23,18 @@ from . import __version__
 
 USER_AGENT = os.environ.get("FR_OPEN_DATA_USER_AGENT", f"french-open-data-mcp/{__version__} (open-source MCP server)")
 MAX_WAIT_S = 5.0
+UNAVAILABLE = (502, 503, 504)
 
 
 class SourceError(RuntimeError):
     """Error returned by a public API (the message is meant for the model and the user)."""
 
 
-def _retry_after(value: str | None) -> float:
+def _retry_after(value: str | None, default: float = 1.0) -> float:
     try:
-        return min(max(float(value or 1), 0.0), MAX_WAIT_S)
+        return min(max(float(value or default), 0.0), MAX_WAIT_S)
     except ValueError:
-        return 1.0
+        return default
 
 
 def request_json(
@@ -67,8 +70,8 @@ def request_json(
                 raw = resp.read()
             return json.loads(raw.decode("utf-8")) if raw else None
         except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt == 1:
-                time.sleep(_retry_after(e.headers.get("Retry-After")))
+            if (e.code == 429 or e.code in UNAVAILABLE) and attempt == 1:
+                time.sleep(_retry_after(e.headers.get("Retry-After"), 1.0 if e.code == 429 else 2.0))
                 continue
             try:
                 detail = e.read().decode("utf-8", errors="replace")[:300]
@@ -76,6 +79,9 @@ def request_json(
                 detail = ""
             if e.code == 429:
                 raise SourceError(f"{source_name}: too many requests (HTTP 429). Try again later.") from e
+            if e.code in UNAVAILABLE:
+                raise SourceError(f"{source_name}: temporarily unavailable (HTTP {e.code}). Try again later. "
+                                  f"{detail}".strip()) from e
             raise SourceError(f"{source_name}: HTTP {e.code}. {detail}".strip()) from e
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
             if attempt == 1:
