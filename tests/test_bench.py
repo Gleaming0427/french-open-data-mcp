@@ -95,6 +95,25 @@ class TestChecks(unittest.TestCase):
         self.assertIn("property_prices(insee_code=75056) ERROR", text)
         self.assertIn("Je ne sais pas.", text)
 
+    def test_resummarize_reapplies_checks(self):
+        q = {"id": "name", "question": "?", "calls": [], "answer": {"contains": ["TOTALENERGIES SE (TOTALENERGIE SE)"]}}
+        record = run.run_record(q, 1, Answer(text="TOTALENERGIES SE", tool_calls=[call("company_profile", {}, result="{}")]), 1.0)
+        self.assertFalse(record["success"])
+        meta = {"started": "x", "version": "0.1.0", "runs": 1, "llm": {"model": "m", "base_url": "u"},
+                "machine": {"platform": "test"}}
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "meta.json").write_text(json.dumps(meta))
+            (Path(d) / "runs.jsonl").write_text(json.dumps(record) + "\n")
+            (Path(d) / "summary.md").write_text("as run")
+            fixed = {**q, "answer": {"contains": ["TOTALENERGIES"]}}
+            (Path(d) / "q.json").write_text(json.dumps({"questions": [fixed]}))
+            with redirect_stdout(StringIO()):
+                run.resummarize(d, str(Path(d) / "q.json"))
+            text = (Path(d) / "summary.md").read_text()
+            self.assertEqual((Path(d) / "summary-as-run.md").read_text(), "as run")
+        self.assertIn("**Success: 1/1**", text)
+        self.assertIn("Checks re-applied", text)
+
     def test_public_api_error_is_reported_separately(self):
         down = call("property_prices", {"insee_code": "21054", "period": "2025"}, error=True,
                     result="ERROR: data.gouv.fr Tabular API: temporarily unavailable (HTTP 503). Try again later.")

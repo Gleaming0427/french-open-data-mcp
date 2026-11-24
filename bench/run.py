@@ -16,6 +16,10 @@ runs.jsonl (one line per run, with the full answer) and summary.md (tables to pu
 The memory used by the model server is not measured: read it in Activity Monitor.
 
   python -m bench.run --summarize latest     # rebuild summary.md of the latest results
+
+--summarize re-applies the checks of the current questions file to the stored answers and
+tool results (the model is not run again). The summary written during the run is kept as
+summary-as-run.md, and the new summary says when and with what the checks were re-applied.
 """
 
 from __future__ import annotations
@@ -187,6 +191,9 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
         f"- Questions: `{Path(meta.get('questions_file') or 'questions.json').name}`, "
         f"{len({r['id'] for r in records})} questions",
         f"- Runs: {meta['runs']} per question, {len(records)} in total",
+        *([f"- Checks re-applied on {meta['rescored']['date']} with `{meta['rescored']['questions_file']}` "
+           f"(commit `{meta['rescored']['commit'] or '?'}`) to {meta['rescored']['runs']} stored runs; "
+           "the summary written during the run is kept in summary-as-run.md"] if meta.get("rescored") else []),
         "",
         f"**Success: {ok}/{len(records)}** (expected tool calls succeeded and the answer contains the tool's figure).",
         "",
@@ -245,8 +252,20 @@ def _calls_text(calls: list[dict[str, Any]]) -> str:
     return _cell(" > ".join(parts) or "none", 300)
 
 
+def rescore(record: dict[str, Any], q: dict[str, Any]) -> bool:
+    """Re-apply the checks of q to a stored run. False when the run has no stored tool results."""
+    calls = record["tool_calls"]
+    if any("result" not in c for c in calls):
+        return False
+    a = Answer(text=record["answer"], error=record.get("error"), tool_calls=[
+        ToolCall("", c["tool"], c["arguments"], c["error"], None, "", repeated=c["repeated"],
+                 seconds=c.get("seconds") or 0.0, result=c["result"]) for c in calls])
+    record.update(evaluate(q, a))
+    return True
+
+
 def resummarize(path: str, questions_file: str | None) -> None:
-    """Rebuild summary.md from runs.jsonl and meta.json (unneeded calls are recomputed)."""
+    """Rebuild summary.md from runs.jsonl and meta.json, re-applying the checks of the questions file."""
     root = Path(path)
     if path == "latest":
         dirs = sorted(d for d in (HERE / "results").glob("*-*") if (d / "runs.jsonl").exists())
@@ -256,10 +275,22 @@ def resummarize(path: str, questions_file: str | None) -> None:
     meta = json.loads((root / "meta.json").read_text(encoding="utf-8"))
     records = [json.loads(line) for line in (root / "runs.jsonl").read_text(encoding="utf-8").splitlines() if line]
     qfile = questions_file or meta.get("questions_file") or str(HERE / "questions.json")
+    if not Path(qfile).exists():  # results copied from another machine
+        qfile = str(HERE / Path(qfile).name)
     questions = {q["id"]: q for q in json.loads(Path(qfile).read_text(encoding="utf-8"))["questions"]}
+    rescored = 0
     for r in records:
         if r["id"] in questions:
-            r["calls_extra"] = unneeded_calls(questions[r["id"]], [c["tool"] for c in r["tool_calls"]])
+            if rescore(r, questions[r["id"]]):
+                rescored += 1
+            else:  # older results without tool results: only the unneeded calls can be recomputed
+                r["calls_extra"] = unneeded_calls(questions[r["id"]], [c["tool"] for c in r["tool_calls"]])
+    if rescored:
+        meta = {**meta, "rescored": {"date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                                     "questions_file": Path(qfile).name, "runs": rescored,
+                                     "commit": _command("git", "-C", str(HERE.parent), "rev-parse", "--short", "HEAD")}}
+        if (root / "summary.md").exists() and not (root / "summary-as-run.md").exists():
+            (root / "summary-as-run.md").write_text((root / "summary.md").read_text(encoding="utf-8"), encoding="utf-8")
     summary = summarize(records, meta)
     (root / "summary.md").write_text(summary, encoding="utf-8")
     print(summary)

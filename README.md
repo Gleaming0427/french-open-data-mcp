@@ -226,7 +226,9 @@ fault. The script does not measure memory: read the model server's memory use in
 Monitor during the run. `--only id1,id2` runs some questions only. `--questions
 bench/questions_holdout.json` runs the held-out questions (see Limits). The failures table lists
 the calls made and the start of each wrong answer; `python -m bench.run --summarize latest`
-rebuilds `summary.md` of the latest results with the current version of the script.
+rebuilds `summary.md` of the latest results with the current version of the script and
+re-applies the checks of the questions file to the stored answers (the summary written
+during the run is kept as `summary-as-run.md`).
 
 ## Configuration (`config.json`)
 
@@ -288,6 +290,20 @@ the model as text, so it can report them instead of guessing.
   changes were made on the same 8 questions, so a new run on them would be optimistic:
   `bench/questions_holdout.json` holds 8 other questions, written before any run on them and
   not used to adjust the tools.
+- **Third benchmark (tools v3), same 8 questions: 23/24** (optimistic: the tools were
+  adjusted on these questions). The remaining failure: a company count answered "5".
+- **Held-out questions (tools v3, never used to adjust the tools): 18/24 as scored during
+  the run, 20/24 with the corrected name check.** The check for the SIREN question required
+  the whole API name, "TOTALENERGIES SE (TOTALENERGIE SE)"; it was changed to
+  "TOTALENERGIES" in commit `3fd3ad1`, 22 seconds after the run started and before its
+  results were known, and two answers reading "TOTALENERGIES SE" then pass. Both summaries
+  are kept (`summary-as-run.md`, `summary.md`). Results by kind of question: municipality
+  code 3/3; DVF prices (Nantes 2024, Bordeaux, Marseille 8th, Lyon 3rd 2024) 11/12, the
+  failure being a run without any tool call; Metz (not covered) 3/3, no invented figure;
+  company name from a SIREN 3/3 with the corrected check; **company count 0/3**: once the
+  number listed (5) instead of the total (1,490), once the activity written in the search
+  text (0 results), once "0" although the result gave 1,490. Counting from a search result
+  is the weak point measured here.
 - **Not advice.** Answers are not legal, tax or financial advice. Check important
   answers against the cited source.
 
