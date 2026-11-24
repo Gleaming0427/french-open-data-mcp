@@ -59,6 +59,23 @@ class TestChecks(unittest.TestCase):
         r = run.evaluate(q, Answer(text="1490 entreprises actives.", tool_calls=[call("search_companies", {}, result=cut)]))
         self.assertTrue(r["success"], r)
 
+    def test_wilson_alternatives_and_categories(self):
+        lo, hi = run.wilson(57, 72)
+        self.assertEqual((round(lo, 2), round(hi, 2)), (0.68, 0.87))
+        q = {"id": "c", "category": "count", "question": "?",
+             "calls": [{"tool": ["count_companies", "search_companies"], "result": {"filters.code_commune": "33063"}}],
+             "answer": {"value_from": {"tool": ["count_companies", "search_companies"], "path": "total_results"}}}
+        res = json.dumps({"filters": {"code_commune": "33063"}, "total_results": 1490})
+        for tool in ("count_companies", "search_companies"):
+            r = run.evaluate(q, Answer(text="1 490", tool_calls=[call(tool, {}, result=res)]))
+            self.assertTrue(r["success"], (tool, r))
+        r = run.evaluate(q, Answer(text="1 490", tool_calls=[call("company_profile", {}, result=res)]))
+        self.assertEqual(r["missing_calls"], ["count_companies/search_companies"])
+        rec = run.run_record(q, 1, Answer(text="1 490", tool_calls=[call("count_companies", {}, result=res)]), 1.0)
+        meta = {"started": "x", "version": "0.1.0", "runs": 1, "llm": {"model": "m", "base_url": "u"},
+                "machine": {"platform": "test"}}
+        self.assertIn("| count | 1/1 (100%", run.summarize([rec], meta))
+
     def test_value_at(self):
         self.assertEqual(run.value_at({"a": [{"b": 3}]}, "a.0.b"), 3)
         self.assertIsNone(run.value_at({"a": []}, "a.0.b"))
@@ -140,7 +157,7 @@ class TestChecks(unittest.TestCase):
                 run.resummarize(d, str(Path(d) / "q.json"))
             text = (Path(d) / "summary.md").read_text()
             self.assertEqual((Path(d) / "summary-as-run.md").read_text(), "as run")
-        self.assertIn("**Success: 1/1**", text)
+        self.assertIn("**Success: 1/1 (100%", text)
         self.assertIn("Checks re-applied", text)
 
     def test_profiler_fields_and_machine_text(self):
@@ -173,29 +190,41 @@ class TestChecks(unittest.TestCase):
         self.assertEqual(run.check_validation(q, refused, True, "DVF does not cover Alsace")[0], [])
         self.assertTrue(run.check_validation(q, refused, False, good)[0])
 
-    def test_load_questions_and_ollama_config(self):
+    def test_question_sets_and_ollama_config(self):
+        from collections import Counter
+
         from fr_open_data.orchestrator import check_config, remote_llm_host
-        both = run.load_questions([str(run.HERE / "questions_holdout.json"), str(run.HERE / "questions_holdout2.json")])
-        self.assertEqual(len(both), 24)
+        dev = run.load_questions([str(run.HERE / "questions_dev.json")])
+        test = run.load_questions([str(run.HERE / "questions_test.json")])
+        self.assertEqual(len(dev), 32)
+        self.assertEqual(Counter(q["category"] for q in test), Counter({c: 5 for c in (
+            "municipality_code", "dvf_town", "dvf_arrondissement", "dvf_half_year", "dvf_not_covered",
+            "count_naf", "count_section", "company_siren")}))
+        self.assertTrue(all(q.get("validate") for q in test))
+        self.assertFalse({q["id"] for q in dev} & {q["id"] for q in test})
+        self.assertEqual(len(run.load_questions([str(run.HERE / "questions_dev.json"),
+                                                 str(run.HERE / "questions_test.json")])), 72)
         with self.assertRaisesRegex(ValueError, "used twice"):
-            run.load_questions([str(run.HERE / "questions.json")] * 2)
+            run.load_questions([str(run.HERE / "questions_dev.json")] * 2)
         cfg = json.loads((run.HERE / "config.ollama.json").read_text(encoding="utf-8"))
         check_config(cfg)
         self.assertIsNone(remote_llm_host(cfg["llm"]))
         self.assertIsNone(cfg["llm"]["tool_choice"])
         meta = {"started": "x", "version": "0.1.0", "runs": 1, "llm": {"model": "m", "base_url": "u"},
-                "machine": {"platform": "test"},
-                "questions_file": ["bench/questions_holdout.json", "bench/questions_holdout2.json"]}
-        text = run.summarize([], meta)
-        self.assertIn("`questions_holdout.json`, `questions_holdout2.json`", text)
+                "machine": {"platform": "test"}, "questions_file": ["bench/questions_dev.json", "bench/questions_test.json"]}
+        self.assertIn("`questions_dev.json`, `questions_test.json`", run.summarize([], meta))
 
-    def test_holdout2_file(self):
-        data = json.loads((Path(run.HERE) / "questions_holdout2.json").read_text(encoding="utf-8"))
-        self.assertEqual(len(data["questions"]), 16)
-        self.assertEqual(len({q["id"] for q in data["questions"]}), 16)
-        for q in data["questions"]:
-            self.assertTrue(q.get("validate"), q["id"])
-            self.assertTrue(q.get("answer"), q["id"])
+    def test_company_checks_per_tool(self):
+        q = next(q for q in run.load_questions([str(run.HERE / "questions_test.json")]) if q["id"] == "t-siren-4")
+        profile = json.dumps({"company": {"siren": "552120222", "naf_activity_code": "64.19Z"}})
+        search = json.dumps({"results": [{"siren": "552120222", "naf_activity_code": "64.19Z"}]})
+        other = json.dumps({"results": [{"siren": "999999999", "naf_activity_code": "64.19Z"}]})
+        self.assertTrue(run.evaluate(q, Answer(text="64.19Z", tool_calls=[call("company_profile", {}, result=profile)]))["success"])
+        self.assertTrue(run.evaluate(q, Answer(text="64.19Z", tool_calls=[call("search_companies", {}, result=search)]))["success"])
+        self.assertFalse(run.evaluate(q, Answer(text="64.19Z", tool_calls=[call("search_companies", {}, result=other)]))["success"])
+        name = next(q for q in run.load_questions([str(run.HERE / "questions_test.json")]) if q["id"] == "t-siren-1")
+        prof = json.dumps({"company": {"siren": "632012100"}})
+        self.assertTrue(run.evaluate(name, Answer(text="Il s'agit de L'Oréal.", tool_calls=[call("company_profile", {}, result=prof)]))["success"])
 
     def test_validate_runs_the_tools(self):
         from unittest import mock
@@ -245,7 +274,7 @@ class TestChecks(unittest.TestCase):
                 "runs": 1, "llm": {"model": "olala", "base_url": "http://127.0.0.1:8000/v1"},
                 "machine": {"platform": "test", "chip": "Apple M2 Max", "memory_gb": 64, "macos": "15.0"}}
         text = run.summarize(records, meta)
-        self.assertIn("**Success: 1/1**", text)
+        self.assertIn("**Success: 1/1 (100%", text)
         self.assertIn("10.0 tokens/s", text)
 
 

@@ -45,6 +45,7 @@ at startup: questions and tool results would then be sent there.
 | Tool | Data source | Key | Notes |
 |---|---|---|---|
 | `search_companies` | Recherche d'entreprises API (DINUM) | none | Name, address, director, SIREN/SIRET; filters: municipality name or INSEE code, postcode, department (any establishment), NAF codes and activity section (main activity). Returns the filters applied, the total count and up to 25 companies |
+| `count_companies` | same | none | Number of companies matching filters (municipality, NAF codes, activity section, department, postcode), without a list |
 | `company_profile` | same | none | Directors (no birth date or nationality), published financials, labels, collective agreements |
 | `find_municipality` | Découpage administratif API (geo.api.gouv.fr) | none | Name → INSEE code, ranked by population; arrondissements of Paris, Lyon and Marseille by name ("Paris 11e") |
 | `property_prices` | DVF géolocalisées via the data.gouv.fr Tabular API | none | Median and quartile price per m², houses and apartments, per municipality (name or INSEE code) and year or half-year |
@@ -209,91 +210,67 @@ speaks MCP over stdio.
 
 ### 7. Measure (benchmark)
 
-`bench/run.py` asks the fixed questions of `bench/questions.json` several times and checks
-each answer: the expected tool calls must succeed with the expected arguments (for DVF: the
-result must be for the right municipality and period), and the answer must contain the
-figure returned by the tool in that run (or, for Strasbourg, which DVF does not cover, no
-euro amount). With the model server running:
+The protocol, fixed before the measurements, is in [`bench/PROTOCOL.md`](bench/PROTOCOL.md):
+question sets, success criterion, how the settings of Olala are chosen, which models are
+compared, and what may not change once the test runs have started.
+
+- `bench/questions_dev.json`: 32 development questions, which may be used to choose settings.
+- `bench/questions_test.json`: 40 test questions (8 categories of 5), never used to choose
+  anything. Check first that every question has its data, without any model:
 
 ```bash
-python -m bench.run --config config.json --runs 3 --label "Olala q5e6, MacBook Pro M2 Max"
+python -m bench.run --validate --questions bench/questions_test.json
 ```
 
-Results go to `bench/results/<date>-<time>/`: `summary.md` (tables), `runs.jsonl` (one line
-per run, with the full answer and the tools called) and `meta.json` (machine, model,
-configuration, commit). Token counts come from the model server when it reports them
-(mlx-engine does, at the end of each response); tokens/s are computed over the whole model
-request, so they include prompt processing. Runs during which a public API failed
-(network, HTTP 429 or 5xx) are counted and shown separately: they are not the model's
-fault. The script does not measure memory: read the model server's memory use in Activity
-Monitor during the run. The summary also counts the answers that name the source of the
-data returned (keyword check, not part of the success criterion). `--only id1,id2` runs some
-questions only. `--questions
-bench/questions_holdout.json` runs the held-out questions (see Limits).
-
-`bench/questions_holdout2.json` is a second held-out set of 16 questions, written after the
-tools were frozen (commit `1f310a9`). Before running a model on it, check that the data each
-question needs exists, without any model:
+Then, with the model server running (example: Olala on the test set):
 
 ```bash
-python -m bench.run --validate --questions bench/questions_holdout2.json
+python -m bench.run --config config.json --runs 3 --questions bench/questions_test.json --label "Olala q5e6, reasoning medium, test" --server-version "mlx-engine (OVHcloud fork) 58083ca"
 ```
 
-A question that fails validation is corrected or removed before the model run, never after.
-On macOS, `meta.json` and `summary.md` record the Mac model, chip, CPU and GPU core counts
-(`system_profiler`), memory and macOS version. `--server-version` records the model server,
-e.g. `--server-version "mlx-engine (OVHcloud fork) $(git -C ../mlx-engine log -1 --format=%h)"`.
-
-The failures table lists the calls made and the start of each wrong answer; `python -m bench.run --summarize latest`
-rebuilds `summary.md` of the latest results with the current version of the script and
-re-applies the checks of the questions file to the stored answers (the summary written
-during the run is kept as `summary-as-run.md`).
+A run counts as a success when the expected tool call succeeded with the expected data (for
+DVF, the right municipality and period) and the answer contains the figure the tool
+returned in that run (or the expected text; or no euro amount where DVF has no data).
+Results go to `bench/results/<date>-<time>/`: `summary.md` (success with 95% intervals, by
+category and by question, failures with the calls made), `runs.jsonl` (every answer and
+tool result) and `meta.json` (machine, model, settings, commit). Token counts come from the
+model server when it reports them; tokens/s include prompt processing. Runs hit by a public
+API error (network, HTTP 429 or 5xx) are shown separately. Whether the answer names the
+source of the data is reported, but is not part of the success criterion. The script does
+not measure memory: read the model server's memory use in Activity Monitor.
+`python -m bench.run --summarize latest` rebuilds `summary.md` from the stored runs.
 
 ### 8. Compare with another local model (Ollama)
 
-The benchmark can measure any model served by Ollama on the same questions, with
-`bench/config.ollama.json` (same MCP server and limits as `config.example.json`). From the
-Ollama documentation (consulted 2026-11-24): its OpenAI-compatible endpoint supports tools
-but lists `tool_choice` as unsupported, so the config omits it; streaming with tools is
-documented only for the native API, so the config turns streaming off; the default context
-is 4k tokens below 24 GiB of VRAM, and the OpenAI-compatible endpoint cannot change it per
-request: a model with `PARAMETER num_ctx` must be created. The Olala server ran with a
-context of 8192 tokens, so:
+`bench/config.ollama.json` measures any model served by Ollama with the same MCP server,
+instructions and limits. From the Ollama documentation (consulted 2026-11-24): its
+OpenAI-compatible endpoint supports tools but lists `tool_choice` as unsupported, so the
+config omits it; streaming with tools is documented only for the native API, so the config
+turns streaming off; the default context is 4k tokens below 24 GiB of VRAM and cannot be
+changed per request on that endpoint, so a model with `PARAMETER num_ctx` is created, with
+the 8192 tokens the Olala server uses:
 
 ```bash
 ollama pull qwen3:8b
 ```
 
 ```bash
-printf 'FROM qwen3:8b\nPARAMETER num_ctx 8192\n' > Modelfile.qwen3-8k && ollama create qwen3-8b-ctx8k -f Modelfile.qwen3-8k
+printf 'FROM qwen3:8b\nPARAMETER num_ctx 8192\n' > Modelfile.qwen3-8b && ollama create qwen3-8b-ctx8k -f Modelfile.qwen3-8b
 ```
-
-Then run the 24 held-out questions (both files in one run):
 
 ```bash
-python -m bench.run --config bench/config.ollama.json --model qwen3-8b-ctx8k --runs 3 --questions bench/questions_holdout.json bench/questions_holdout2.json --label "qwen3:8b (Ollama), held-out 1+2" --server-version "$(ollama --version)"
+python -m bench.run --config bench/config.ollama.json --model qwen3-8b-ctx8k --runs 3 --questions bench/questions_test.json --label "qwen3:8b (Ollama), test" --server-version "$(ollama --version)"
 ```
 
-What differs from the Olala runs, to state with any comparison: Ollama runs GGUF models on
-its own engine and Olala ran on MLX, so speeds are not comparable; sampling and thinking use
-each model's defaults in Ollama (Olala used the model card's sampling and
-`reasoning_effort` low); the tool descriptions were adjusted while testing Olala.
+To state with any comparison: Ollama and mlx-engine are different engines, so speeds are
+not comparable; Ollama models run with their own default sampling and thinking; the tools
+were developed while testing Olala.
 
-### Raw results
+### Results
 
-`bench/results/` holds the raw results of the runs on the M2 Max (`meta.json`, `runs.jsonl`
-with every answer and tool result, `summary.md`):
-
-| Folder | Code | Questions | Success |
-|---|---|---|---|
-| `20261124-121208` | tools v1 (`8422176`) | `questions.json` | 12/24 |
-| `20261124-132440` | tools v2 (`f31ebe4`) | `questions.json` | 21/24 |
-| `20261124-143946` | tools v2 (`f31ebe4`) | `questions.json` | 20/24 |
-| `20261124-150321` | interrupted run: 14 of 24 runs, no summary | `questions.json` | 11/14 |
-| `20261124-150625` | tools v3 (`729b340`) | `questions.json` | 23/24 |
-| `20261124-152301` | tools v3 (`729b340`) | `questions_holdout.json` | 18/24 as run, 20/24 re-checked |
-| `20261124-160832` | tools v3 (`1bdba5b`) | `questions_holdout2.json` | 37/48 |
-
+No result under the protocol yet. The exploratory runs of 2026-11-24 (tools v1 to v3, made
+while the tools were being adjusted, without a fixed protocol) are archived with their
+questions in [`bench/results/exploratory/`](bench/results/exploratory/README.md).
 
 ## Configuration (`config.json`)
 
@@ -302,6 +279,7 @@ with every answer and tool result, `summary.md`):
 | `llm.base_url`, `llm.model` | Local OpenAI-compatible endpoint and model id (mlx-engine serves one model and ignores the id) |
 | `llm.api_key_env` | Name of the environment variable holding the key (never the key itself); it can be set in `.env`. `null` for Ollama |
 | `llm.stream` | `true` (mlx-engine only accepts streaming) |
+| `llm.tool_choice` | `auto` by default; `null` omits it (Ollama's OpenAI-compatible endpoint does not support it) |
 | `llm.max_tokens` | Maximum length of each model reply (default 4096) |
 | `llm.params` | Added to every request (sampling, `chat_template_kwargs`) |
 | `mcp_servers[].command` | Command that starts the MCP server as a subprocess (stdio) |
@@ -327,78 +305,13 @@ the model as text, so it can report them instead of guessing.
   HTTP 503 (PostgREST error PGRST002) for the DVF 2025 file while the other DVF files
   answered; the same query worked again shortly after. Each request is retried once; if it
   still fails, the tool returns the error and the model reports it.
-- **Small model.** Olala mini has about 1B active parameters per token (model card). Its
-  tool-call reliability on these tools has not been measured beyond the runs described
-  here. In a second run of the question above (2026-11-24), after `property_prices` it also
-  called `search_companies`, `company_profile` with the INSEE code instead of a SIREN (which
-  failed), and `property_prices` twice more with the same arguments; the answer gave the
-  median sale price (130,000 €), which matches the tool result, without the price per m².
-  Since then, an identical repeated call reuses the first result instead of querying the
-  API again, and the instructions ask the model to stop once a result answers the question;
-  the effect on Olala has not been measured yet. Restrict the tool list (`tools` in
-  `mcp_servers`) if the model picks the wrong tool.
-- **First benchmark (2026-11-24, M2 Max 32 GB, Olala q5e6, 24 runs): 12/24.** The main
-  failure: the model called `find_municipality` correctly, then passed another INSEE code to
-  the next tool (for Dijon, twice 21054, the example code then written in the tool
-  description). Two answers gave a figure that was not the one asked: one from another
-  municipality's data while citing Dijon's code, one with no figure in the tool result at
-  all. For Paris 11th it passed the postcode (75011). Since then: `property_prices` and
-  `search_companies` take the municipality name (arrondissements included) and resolve it
-  themselves; example codes were removed from the tool descriptions; a NAF code written in
-  the search text is used as a NAF filter; a Paris postcode is converted to the
-  arrondissement code; an empty statistic says that there is no figure.
-- **Second benchmark (same machine and questions, tools v2): 20/24** (a first run with the same
-  code gave 21/24; its 3 failures were all on the company count: once "4", twice no call). All DVF questions
-  succeeded except one Paris run, where the model asked for "Paris" without the
-  arrondissement and gave up after the error. The company count failed 3/3: the search was
-  right, but two answers gave the number of companies listed (5) instead of the total
-  (1,501), and one said it could not answer. Since then, the Paris error asks for the
-  arrondissement by name, and the search result states the total in a sentence. These
-  changes were made on the same 8 questions, so a new run on them would be optimistic:
-  `bench/questions_holdout.json` holds 8 other questions, written before any run on them and
-  not used to adjust the tools.
-- **Third benchmark (tools v3), same 8 questions: 23/24** (optimistic: the tools were
-  adjusted on these questions). The remaining failure: a company count answered "5".
-- **Held-out questions (tools v3, never used to adjust the tools): 18/24 as scored during
-  the run, 20/24 with the corrected name check.** The check for the SIREN question required
-  the whole API name, "TOTALENERGIES SE (TOTALENERGIE SE)"; it was changed to
-  "TOTALENERGIES" in commit `3fd3ad1`, 22 seconds after the run started and before its
-  results were known, and two answers reading "TOTALENERGIES SE" then pass. Both summaries
-  are kept (`summary-as-run.md`, `summary.md`). Results by kind of question: municipality
-  code 3/3; DVF prices (Nantes 2024, Bordeaux, Marseille 8th, Lyon 3rd 2024) 11/12, the
-  failure being a run without any tool call; Metz (not covered) 3/3, no invented figure;
-  company name from a SIREN 3/3 with the corrected check; **company count 0/3**: once the
-  number listed (5) instead of the total (1,490), once the activity written in the search
-  text (0 results), once "0" although the result gave 1,490. Counting from a search result
-  is the weak point measured here.
-- **Second held-out set (16 questions, written after the tools were frozen and checked with
-  `--validate` before the run; tools v3, commit `1bdba5b`): 37/48.** Over both held-out sets:
-  57/72 with the corrected name check, 79% (95% Wilson interval 68-87%); 55/72 as scored
-  during the runs. The 3 runs of a question are not independent, so the real uncertainty is
-  larger. By kind of question:
-
-  | Kind | Success | What went wrong |
-  |---|---|---|
-  | Municipality code | 9/9 | |
-  | DVF, town without arrondissements | 18/18 | |
-  | DVF, arrondissement of Paris, Lyon or Marseille | 10/15 | asked for the whole city, put the INSEE code in the name field, or wrote an invalid name; no retry after the error |
-  | DVF, half-year | 1/3 | asked for "2026-S2" or "2026-01" instead of "2026-S1" |
-  | Area DVF does not cover | 9/9 | no invented figure |
-  | Company count | 2/9 | number listed instead of the total; activity section passed as a NAF code; invented SIRENs; "0" although the result gave a total |
-  | Company identity from a SIREN | 8/9 | the failure is a correct answer ("RENAULT") found with `search_companies` instead of `company_profile`, which the checks written before the run count as a failure |
-
-  Among the failed held-out runs, every wrong figure given as an answer was a company count;
-  for property prices, the failed runs said that the data was not available. Output: about
-  1,300 tokens per question, 79.8 tokens/s end to end. Machine: MacBook Pro (Mac14,5),
-  M2 Max with 12 CPU cores and 30 GPU cores, 32 GB, model server mlx-engine (OVHcloud fork)
-  `58083ca`. An INSEE code in the `municipality` field is rejected by the tool; accepting it
-  would be a tool change, to be measured on new questions.
-- **Citing the source.** The instructions ask the model to cite the source given by the tool.
-  A keyword check added after the runs (`cites_source` in `bench/run.py`: DVF, Sirene,
-  Découpage administratif...), applied to the stored answers, finds the source of the data
-  named in 34 of the 60 held-out answers where a tool returned data. Most of the others name
-  the tool instead ("source: property_prices") or no source. This check is not part of the
-  success criterion.
+- **Small model.** Olala mini has about 1B active parameters per token (model card); OVHcloud
+  reports 59.6 on the BFCL V3 tool-calling benchmark, measured with `reasoning_effort`
+  high. In the exploratory runs (`bench/results/exploratory/`), it handled simple lookups
+  well and failed mostly when the question had to be turned into parameters (half-year,
+  arrondissement, activity section) or a total had to be read from a search result. The
+  tools v4 address the failures seen there (see `bench/PROTOCOL.md`); their effect is
+  measured under the protocol.
 - **Not advice.** Answers are not legal, tax or financial advice. Check important
   answers against the cited source.
 
@@ -415,10 +328,12 @@ fr_open_data/
   llm.py             streaming chat client (standard library)
   http.py            HTTP helper (User-Agent, one retry on 429/502/503/504 and network errors)
   envfile.py         .env reader (standard library)
-bench/run.py         benchmark: fixed questions, checks, results to publish
-bench/questions.json the questions and what each answer must contain
-bench/questions_holdout*.json  held-out questions (not used to adjust the tools)
-bench/config.ollama.json      configuration for measuring a model served by Ollama
+bench/PROTOCOL.md    benchmark protocol (fixed before the measurements)
+bench/run.py         benchmark: runs, checks, summaries, --validate, --summarize
+bench/questions_dev.json   development questions (may be used to choose settings)
+bench/questions_test.json  test questions (never used to choose anything)
+bench/config.ollama.json   configuration for measuring a model served by Ollama
+bench/results/       results; exploratory/ holds the runs made before the protocol
 tools/fake_llm.py    fake OpenAI-compatible server for tests
 tests/               offline tests (unittest)
 config.example.json

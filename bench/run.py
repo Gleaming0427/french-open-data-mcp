@@ -131,16 +131,23 @@ def _result(call: ToolCall) -> dict[str, Any]:
     return d if isinstance(d, dict) else {}
 
 
+def tools_of(spec: dict[str, Any]) -> list[str]:
+    """'tool' is one tool name or a list of tools that are equally valid."""
+    return [spec["tool"]] if isinstance(spec["tool"], str) else list(spec["tool"])
+
+
 def call_matches(call: ToolCall, expected: dict[str, Any]) -> bool:
     """'args': required arguments; 'result': required fields of the tool result (dotted paths)."""
-    if call.tool != expected["tool"] or (call.error and not expected.get("allow_error")):
+    if call.tool not in tools_of(expected) or (call.error and not expected.get("allow_error")):
         return False
     args = call.arguments if isinstance(call.arguments, dict) else (tool_arguments(call.arguments) or {})
     if not all(k in args and _same(args[k], v) for k, v in (expected.get("args") or {}).items()):
         return False
-    result = _result(call) if expected.get("result") else {}
-    return all(value_at(result, k) is not None and _same(value_at(result, k), v)
-               for k, v in (expected.get("result") or {}).items())
+    spec = expected.get("result") or {}
+    if isinstance(spec.get(call.tool), dict):  # fields that depend on the tool: {"tool": {"path": value}}
+        spec = spec[call.tool]
+    result = _result(call) if spec else {}
+    return all(value_at(result, k) is not None and _same(value_at(result, k), v) for k, v in spec.items())
 
 
 def _plain(text: str) -> str:
@@ -166,23 +173,24 @@ def cites_source(answer: str, results: list[str]) -> bool | None:
 
 def unneeded_calls(q: dict[str, Any], tools: list[str]) -> int:
     """Calls to tools the question does not need ('calls' and 'allowed' tools are needed)."""
-    needed = {e["tool"] for e in q.get("calls") or []} | set(q.get("allowed") or [])
+    needed = {t for e in q.get("calls") or [] for t in tools_of(e)} | set(q.get("allowed") or [])
     return sum(t not in needed for t in tools)
 
 
 def evaluate(q: dict[str, Any], a: Answer) -> dict[str, Any]:
     """Checks for one run. 'success' is true when every check passes."""
-    missing = [e["tool"] for e in q.get("calls") or [] if not any(call_matches(c, e) for c in a.tool_calls)]
+    missing = ["/".join(tools_of(e)) for e in q.get("calls") or [] if not any(call_matches(c, e) for c in a.tool_calls)]
     expect = q.get("answer") or {}
     answer_ok, detail = True, None
     if "value_from" in expect:
         spec = expect["value_from"]
-        results = [c for c in a.tool_calls if c.tool == spec["tool"] and not c.error]
+        results = [c for c in a.tool_calls if c.tool in tools_of(spec) and not c.error]
         value = None
         if results:
-            value = value_at(_result(results[-1]), spec["path"])
+            path = spec["path"] if isinstance(spec["path"], str) else spec["path"].get(results[-1].tool, "")
+            value = value_at(_result(results[-1]), path)
         if not results:
-            answer_ok, detail = False, f"no successful {spec['tool']} call"
+            answer_ok, detail = False, f"no successful {'/'.join(tools_of(spec))} call"
         elif value is None:
             answer_ok, detail = False, f"no value at {spec['path']} in the {spec['tool']} result"
         elif isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -192,7 +200,7 @@ def evaluate(q: dict[str, Any], a: Answer) -> dict[str, Any]:
             answer_ok = str(value).lower() in (a.text or "").lower()
             detail = f"expected {value!r}"
     if expect.get("contains"):
-        found = [s for s in expect["contains"] if s.lower() in (a.text or "").lower()]
+        found = [s for s in expect["contains"] if _plain(s).strip() in _plain(a.text)]
         answer_ok = answer_ok and len(found) == len(expect["contains"])
         detail = f"expected {expect['contains']}"
     if expect.get("no_amount"):
@@ -218,7 +226,7 @@ def evaluate(q: dict[str, Any], a: Answer) -> dict[str, Any]:
 def run_record(q: dict[str, Any], n: int, a: Answer, seconds: float) -> dict[str, Any]:
     usage = [c.get("usage") or {} for c in a.llm_calls]
     return {
-        "id": q["id"], "run": n, "question": q["question"],
+        "id": q["id"], "category": q.get("category"), "run": n, "question": q["question"],
         **evaluate(q, a),
         "seconds": round(seconds, 2),
         "llm_seconds": round(sum(c.get("seconds") or 0 for c in a.llm_calls), 2),
@@ -234,6 +242,21 @@ def run_record(q: dict[str, Any], n: int, a: Answer, seconds: float) -> dict[str
 
 
 # ---------------------------------------------------------------- summary
+
+def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """95% Wilson score interval of a proportion k/n (runs of the same question are not
+    independent, so the real uncertainty is larger)."""
+    if n == 0:
+        return 0.0, 0.0
+    p, d = k / n, 1 + z * z / n
+    centre, half = (p + z * z / (2 * n)) / d, z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+def _rate(k: int, n: int) -> str:
+    lo, hi = wilson(k, n)
+    return f"{k}/{n} ({k / n:.0%}, 95% interval {lo:.0%}-{hi:.0%})" if n else "0/0"
+
 
 def _median(values: list[float]) -> float | None:
     values = [v for v in values if v is not None]
@@ -262,9 +285,21 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
            f"(commit `{meta['rescored']['commit'] or '?'}`) to {meta['rescored']['runs']} stored runs; "
            "the summary written during the run is kept in summary-as-run.md"] if meta.get("rescored") else []),
         "",
-        f"**Success: {ok}/{len(records)}** (expected tool calls succeeded and the answer contains the tool's figure).",
+        f"**Success: {_rate(ok, len(records))}** (expected tool calls succeeded and the answer contains the "
+        "tool's figure; runs of the same question are not independent, so the real uncertainty is larger).",
         "",
     ]
+    categories: dict[str, list[dict[str, Any]]] = {}
+    for r in records:
+        if r.get("category"):
+            categories.setdefault(r["category"], []).append(r)
+    if categories:
+        lines += ["| Category | Success | Names the source |", "|---|---|---|"]
+        for cat, rs in categories.items():
+            cites = [r["cites_source"] for r in rs if r.get("cites_source") is not None]
+            lines.append(f"| {cat} | {_rate(sum(r['success'] for r in rs), len(rs))} "
+                         f"| {f'{sum(cites)}/{len(cites)}' if cites else '-'} |")
+        lines.append("")
     api = [r for r in records if r["api_error"]]
     if api:
         clean = [r for r in records if not r["api_error"]]
@@ -373,8 +408,14 @@ def resummarize(path: str, questions_file: str | list[str] | None) -> None:
     meta = json.loads((root / "meta.json").read_text(encoding="utf-8"))
     records = [json.loads(line) for line in (root / "runs.jsonl").read_text(encoding="utf-8").splitlines() if line]
     qfiles = _question_files(questions_file or meta.get("questions_file")) or [str(HERE / "questions.json")]
-    # results copied from another machine: look for the files in bench/
-    qfiles = [f if Path(f).exists() else str(HERE / Path(f).name) for f in qfiles]
+    # results copied from another machine, or archived with their questions: look next to the
+    # results folder, then in bench/
+    def _find(f: str) -> str:
+        for candidate in (Path(f), root.parent / Path(f).name, HERE / Path(f).name):
+            if candidate.exists():
+                return str(candidate)
+        return f
+    qfiles = [_find(f) for f in qfiles]
     qfile = ", ".join(Path(f).name for f in qfiles)
     questions = {q["id"]: q for q in load_questions(qfiles)}
     rescored = 0
@@ -406,12 +447,13 @@ def check_validation(q: dict[str, Any], v: dict[str, Any], is_error: bool, text:
     problems, value = [], None
     call = ToolCall("", v["tool"], v.get("args") or {}, False, None, "", result=text)
     for e in q.get("calls") or []:
-        if e["tool"] == v["tool"] and not call_matches(call, {k: x for k, x in e.items() if k != "args"}):
+        if v["tool"] in tools_of(e) and not call_matches(call, {k: x for k, x in e.items() if k != "args"}):
             problems.append(f"result does not match {e.get('result')}")
     expect = q.get("answer") or {}
     spec = expect.get("value_from")
-    if spec and spec["tool"] == v["tool"]:
-        value = value_at(_result(call), spec["path"])
+    if spec and v["tool"] in tools_of(spec):
+        path = spec["path"] if isinstance(spec["path"], str) else spec["path"].get(v["tool"], "")
+        value = value_at(_result(call), path)
         if value is None:
             problems.append(f"no value at {spec['path']}")
     for s in expect.get("contains") or []:
@@ -528,7 +570,7 @@ async def _run(args: argparse.Namespace, cfg: dict[str, Any], questions: list[di
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="config.json")
-    ap.add_argument("--questions", nargs="+", default=[str(HERE / "questions.json")],
+    ap.add_argument("--questions", nargs="+", default=[str(HERE / "questions_dev.json")],
                     help="one or more question files (ids must be unique across them)")
     ap.add_argument("--model", help="replace llm.model of the config (e.g. an Ollama model name)")
     ap.add_argument("--runs", type=int, default=3, help="runs per question (default 3)")

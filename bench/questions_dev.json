@@ -1,0 +1,735 @@
+{
+  "_note": "Development set (32 questions): the questions of the exploratory runs (bench/results/exploratory/), with the checks of tools v4. It may be used to choose settings (see bench/PROTOCOL.md); a score on it is not a measure of reliability. Same format as the test set.",
+  "questions": [
+    {
+      "id": "municipality-code-beaune",
+      "question": "Quel est le code INSEE de la commune de Beaune ?",
+      "calls": [
+        {
+          "tool": "find_municipality",
+          "result": {
+            "results.0.insee_code": "21054"
+          }
+        }
+      ],
+      "answer": {
+        "contains": [
+          "21054"
+        ]
+      },
+      "category": "municipality_code"
+    },
+    {
+      "id": "municipality-code-montpellier",
+      "question": "Quel est le code INSEE de Montpellier ?",
+      "calls": [
+        {
+          "tool": "find_municipality",
+          "result": {
+            "results.0.insee_code": "34172"
+          }
+        }
+      ],
+      "answer": {
+        "contains": [
+          "34172"
+        ]
+      },
+      "category": "municipality_code"
+    },
+    {
+      "id": "municipality-code-rennes",
+      "question": "Quel est le code INSEE de la commune de Rennes ?",
+      "calls": [
+        {
+          "tool": "find_municipality",
+          "result": {
+            "results.0.insee_code": "35238"
+          }
+        }
+      ],
+      "answer": {
+        "contains": [
+          "35238"
+        ]
+      },
+      "category": "municipality_code"
+    },
+    {
+      "id": "municipality-code-grenoble",
+      "question": "Quel est le code INSEE de la commune de Grenoble ?",
+      "calls": [
+        {
+          "tool": "find_municipality",
+          "result": {
+            "results.0.insee_code": "38185"
+          }
+        }
+      ],
+      "answer": {
+        "contains": [
+          "38185"
+        ]
+      },
+      "category": "municipality_code"
+    },
+    {
+      "id": "dvf-beaune-apartment-m2",
+      "question": "Quel est le prix médian au m² des appartements vendus à Beaune en 2025 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "21054",
+            "period": "2025"
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "allowed": [
+        "find_municipality"
+      ],
+      "category": "dvf_town"
+    },
+    {
+      "id": "dvf-dijon-house-m2",
+      "question": "Quel est le prix médian au m² des maisons vendues à Dijon en 2024 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "21231",
+            "period": "2024"
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.house.median_price_per_m2_eur"
+        }
+      },
+      "allowed": [
+        "find_municipality"
+      ],
+      "category": "dvf_town"
+    },
+    {
+      "id": "dvf-toulouse-apartment-m2",
+      "question": "Quel est le prix médian au m² des appartements vendus à Toulouse en 2025 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "31555",
+            "period": "2025"
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "allowed": [
+        "find_municipality"
+      ],
+      "category": "dvf_town"
+    },
+    {
+      "id": "dvf-nantes-apartment-m2-2024",
+      "question": "Quel est le prix médian au m² des appartements vendus à Nantes en 2024 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "44109",
+            "period": "2024"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_town"
+    },
+    {
+      "id": "dvf-bordeaux-house-m2",
+      "question": "Quel est le prix médian au m² des maisons vendues à Bordeaux en 2025 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "33063",
+            "period": "2025"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.house.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_town"
+    },
+    {
+      "id": "dvf-lille-apartment-m2",
+      "question": "Quel est le prix médian au m² des appartements vendus à Lille en 2025 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "59350",
+            "period": "2025"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_town"
+    },
+    {
+      "id": "dvf-rennes-house-m2-2024",
+      "question": "Quel est le prix médian au m² des maisons vendues à Rennes en 2024 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "35238",
+            "period": "2024"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.house.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_town"
+    },
+    {
+      "id": "dvf-nice-apartment-m2",
+      "question": "Quel est le prix médian au m² des appartements vendus à Nice en 2025 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "06088",
+            "period": "2025"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_town"
+    },
+    {
+      "id": "dvf-angers-house-m2",
+      "question": "Quel est le prix médian au m² des maisons vendues à Angers en 2025 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "49007",
+            "period": "2025"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.house.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_town"
+    },
+    {
+      "id": "dvf-paris-11-apartment-m2",
+      "question": "Quel est le prix médian au m² des appartements vendus dans le 11e arrondissement de Paris en 2025 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "75111",
+            "period": "2025"
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "allowed": [
+        "find_municipality"
+      ],
+      "category": "dvf_arrondissement"
+    },
+    {
+      "id": "dvf-marseille-8-apartment-m2",
+      "question": "Quel est le prix médian au m² des appartements vendus dans le 8e arrondissement de Marseille en 2025 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "13208",
+            "period": "2025"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_arrondissement"
+    },
+    {
+      "id": "dvf-lyon-3-apartment-m2-2024",
+      "question": "Quel est le prix médian au m² des appartements vendus dans le 3e arrondissement de Lyon en 2024 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "69383",
+            "period": "2024"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_arrondissement"
+    },
+    {
+      "id": "dvf-paris-15-apartment-m2-2024",
+      "question": "Quel est le prix médian au m² des appartements vendus dans le 15e arrondissement de Paris en 2024 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "75115",
+            "period": "2024"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_arrondissement"
+    },
+    {
+      "id": "dvf-lyon-7-apartment-m2",
+      "question": "Quel est le prix médian au m² des appartements vendus dans le 7e arrondissement de Lyon en 2025 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "69387",
+            "period": "2025"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_arrondissement"
+    },
+    {
+      "id": "dvf-marseille-13-house-m2",
+      "question": "Quel est le prix médian au m² des maisons vendues dans le 13e arrondissement de Marseille en 2025 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "13213",
+            "period": "2025"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.house.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_arrondissement"
+    },
+    {
+      "id": "dvf-grenoble-apartment-m2-2026-s1",
+      "question": "Quel est le prix médian au m² des appartements vendus à Grenoble au premier semestre 2026 ?",
+      "calls": [
+        {
+          "tool": "property_prices",
+          "result": {
+            "insee_code": "38185",
+            "period": "2026-S1"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": "property_prices",
+          "path": "statistics.apartment.median_price_per_m2_eur"
+        }
+      },
+      "category": "dvf_half_year"
+    },
+    {
+      "id": "dvf-strasbourg-not-covered",
+      "question": "Quel est le prix médian au m² des maisons vendues à Strasbourg en 2025 ?",
+      "calls": [],
+      "answer": {
+        "no_amount": true
+      },
+      "allowed": [
+        "find_municipality",
+        "property_prices"
+      ],
+      "category": "dvf_not_covered"
+    },
+    {
+      "id": "dvf-metz-not-covered",
+      "question": "Quel est le prix médian au m² des maisons vendues à Metz en 2025 ?",
+      "calls": [],
+      "allowed": [
+        "find_municipality",
+        "property_prices"
+      ],
+      "answer": {
+        "no_amount": true
+      },
+      "category": "dvf_not_covered"
+    },
+    {
+      "id": "dvf-colmar-not-covered",
+      "question": "Quel est le prix médian au m² des maisons vendues à Colmar en 2025 ?",
+      "calls": [],
+      "allowed": [
+        "find_municipality",
+        "property_prices"
+      ],
+      "answer": {
+        "no_amount": true
+      },
+      "category": "dvf_not_covered"
+    },
+    {
+      "id": "dvf-mamoudzou-not-covered",
+      "question": "Quel est le prix médian au m² des appartements vendus à Mamoudzou en 2025 ?",
+      "calls": [],
+      "allowed": [
+        "find_municipality",
+        "property_prices"
+      ],
+      "answer": {
+        "no_amount": true
+      },
+      "category": "dvf_not_covered"
+    },
+    {
+      "id": "companies-toulouse-naf-62-02a",
+      "question": "Combien d'entreprises actives ont pour activité principale le conseil en systèmes et logiciels informatiques (code NAF 62.02A) et au moins un établissement à Toulouse ?",
+      "calls": [
+        {
+          "tool": [
+            "count_companies",
+            "search_companies"
+          ],
+          "result": {
+            "filters.code_commune": "31555",
+            "filters.activite_principale": "62.02A"
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": [
+            "count_companies",
+            "search_companies"
+          ],
+          "path": "total_results"
+        }
+      },
+      "allowed": [
+        "find_municipality"
+      ],
+      "category": "count_naf"
+    },
+    {
+      "id": "companies-bordeaux-naf-56-10a",
+      "question": "Combien d'entreprises actives ont pour activité principale la restauration traditionnelle (code NAF 56.10A) et au moins un établissement à Bordeaux ?",
+      "calls": [
+        {
+          "tool": [
+            "count_companies",
+            "search_companies"
+          ],
+          "result": {
+            "filters.code_commune": "33063",
+            "filters.activite_principale": "56.10A"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": [
+            "count_companies",
+            "search_companies"
+          ],
+          "path": "total_results"
+        }
+      },
+      "category": "count_naf"
+    },
+    {
+      "id": "companies-nantes-naf-10-71c",
+      "question": "Combien d'entreprises actives ont pour activité principale la boulangerie et boulangerie-pâtisserie (code NAF 10.71C) et au moins un établissement à Nantes ?",
+      "calls": [
+        {
+          "tool": [
+            "count_companies",
+            "search_companies"
+          ],
+          "result": {
+            "filters.code_commune": "44109",
+            "filters.activite_principale": "10.71C"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": [
+            "count_companies",
+            "search_companies"
+          ],
+          "path": "total_results"
+        }
+      },
+      "category": "count_naf"
+    },
+    {
+      "id": "companies-grenoble-section-j",
+      "question": "Combien d'entreprises actives de la section d'activité J (information et communication) ont au moins un établissement à Grenoble ?",
+      "calls": [
+        {
+          "tool": [
+            "count_companies",
+            "search_companies"
+          ],
+          "result": {
+            "filters.code_commune": "38185",
+            "filters.section_activite_principale": "J"
+          }
+        }
+      ],
+      "allowed": [
+        "find_municipality"
+      ],
+      "answer": {
+        "value_from": {
+          "tool": [
+            "count_companies",
+            "search_companies"
+          ],
+          "path": "total_results"
+        }
+      },
+      "category": "count_section"
+    },
+    {
+      "id": "company-profile-siren",
+      "question": "Quelle est l'activité principale (code NAF) de l'entreprise dont le SIREN est 552032534 ?",
+      "calls": [
+        {
+          "tool": [
+            "company_profile",
+            "search_companies"
+          ],
+          "result": {
+            "company_profile": {
+              "company.siren": "552032534"
+            },
+            "search_companies": {
+              "results.0.siren": "552032534"
+            }
+          }
+        }
+      ],
+      "answer": {
+        "value_from": {
+          "tool": [
+            "company_profile",
+            "search_companies"
+          ],
+          "path": {
+            "company_profile": "company.naf_activity_code",
+            "search_companies": "results.0.naf_activity_code"
+          }
+        }
+      },
+      "allowed": [],
+      "category": "company_siren"
+    },
+    {
+      "id": "company-name-siren",
+      "question": "Quel est le nom de l'entreprise dont le SIREN est 542051180 ?",
+      "calls": [
+        {
+          "tool": [
+            "company_profile",
+            "search_companies"
+          ],
+          "result": {
+            "company_profile": {
+              "company.siren": "542051180"
+            },
+            "search_companies": {
+              "results.0.siren": "542051180"
+            }
+          }
+        }
+      ],
+      "allowed": [],
+      "answer": {
+        "contains": [
+          "TOTALENERGIES"
+        ]
+      },
+      "category": "company_siren"
+    },
+    {
+      "id": "company-profile-naf-380129866",
+      "question": "Quelle est l'activité principale (code NAF) de l'entreprise dont le SIREN est 380129866 ?",
+      "calls": [
+        {
+          "tool": [
+            "company_profile",
+            "search_companies"
+          ],
+          "result": {
+            "company_profile": {
+              "company.siren": "380129866"
+            },
+            "search_companies": {
+              "results.0.siren": "380129866"
+            }
+          }
+        }
+      ],
+      "allowed": [],
+      "answer": {
+        "value_from": {
+          "tool": [
+            "company_profile",
+            "search_companies"
+          ],
+          "path": {
+            "company_profile": "company.naf_activity_code",
+            "search_companies": "results.0.naf_activity_code"
+          }
+        }
+      },
+      "category": "company_siren"
+    },
+    {
+      "id": "company-name-441639465",
+      "question": "Quel est le nom de l'entreprise dont le SIREN est 441639465 ?",
+      "calls": [
+        {
+          "tool": [
+            "company_profile",
+            "search_companies"
+          ],
+          "result": {
+            "company_profile": {
+              "company.siren": "441639465"
+            },
+            "search_companies": {
+              "results.0.siren": "441639465"
+            }
+          }
+        }
+      ],
+      "allowed": [],
+      "answer": {
+        "contains": [
+          "RENAULT"
+        ]
+      },
+      "category": "company_siren"
+    }
+  ]
+}
