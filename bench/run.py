@@ -39,6 +39,7 @@ import os
 import platform
 import re
 import statistics
+import unicodedata
 import subprocess
 import sys
 import time
@@ -49,13 +50,22 @@ from typing import Any
 import anyio
 
 from fr_open_data import __version__, envfile
-from fr_open_data.orchestrator import Answer, ToolCall, check_config, from_config, load_config, tool_arguments
+from fr_open_data.orchestrator import (Answer, ToolCall, check_config, from_config, load_config, remote_llm_host,
+                                       tool_arguments, warn_if_remote)
 
 HERE = Path(__file__).resolve().parent
 _SEPARATOR = re.compile(r"(?<=\d)[\s   .,'](?=\d{3}(?!\d))")  # thousands separators
 _EURO_AMOUNT = re.compile(r"\d[\d\s   .,]*\s*(€|euros?\b|EUR\b)", re.IGNORECASE)
 # Messages of fr_open_data/http.py when a public API fails: not the model's fault.
 API_ERROR_MARKERS = ("unreachable", "temporarily unavailable", "too many requests", "failed after retry")
+# Words showing that an answer names the source of the data (case and accents ignored, whole words),
+# by source of the tool result. Not part of the success criterion.
+SOURCE_WORDS = {
+    "dvf": ("dvf", "valeurs foncieres"),
+    "recherche d'entreprises": ("recherche d'entreprises", "recherche d entreprises", "sirene", "rne", "inpi"),
+    "decoupage administratif": ("decoupage administratif", "geo api gouv fr", "api geo"),
+    "legifrance": ("legifrance",),
+}
 
 
 # ---------------------------------------------------------------- checks
@@ -102,6 +112,30 @@ def call_matches(call: ToolCall, expected: dict[str, Any]) -> bool:
                for k, v in (expected.get("result") or {}).items())
 
 
+def _plain(text: str) -> str:
+    """Lower case, no accents, punctuation as spaces, apostrophes kept: for word matching."""
+    t = unicodedata.normalize("NFKD", (text or "").replace("’", "'")).encode("ascii", "ignore").decode().lower()
+    return " " + re.sub(r"[^a-z0-9']+", " ", t) + " "
+
+
+def cites_source(answer: str, results: list[str]) -> bool | None:
+    """Whether the answer names the source of at least one tool result that returned data.
+    None when no successful result has a source this check knows."""
+    words = []
+    for text in results:
+        try:
+            source = json.loads(text).get("source") if text.strip().startswith("{") else None
+        except (json.JSONDecodeError, AttributeError):
+            source = None
+        for key, kws in SOURCE_WORDS.items():
+            if source and key in _plain(source):
+                words += kws
+    if not words:
+        return None
+    plain = _plain(answer)
+    return any(f" {_plain(w).strip()} " in plain for w in words)
+
+
 def unneeded_calls(q: dict[str, Any], tools: list[str]) -> int:
     """Calls to tools the question does not need ('calls' and 'allowed' tools are needed)."""
     needed = {e["tool"] for e in q.get("calls") or []} | set(q.get("allowed") or [])
@@ -144,6 +178,7 @@ def evaluate(q: dict[str, Any], a: Answer) -> dict[str, Any]:
     return {
         "success": model_ok and not missing and answer_ok,
         "api_error": any(c.error and any(m in c.result for m in API_ERROR_MARKERS) for c in a.tool_calls),
+        "cites_source": cites_source(a.text, [c.result for c in a.tool_calls if not c.error]),
         "model_ok": model_ok,
         "missing_calls": missing,
         "answer_ok": answer_ok,
@@ -210,18 +245,24 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
         clean = [r for r in records if not r["api_error"]]
         lines += [f"{len(api)} run(s) hit a public API error (network, HTTP 429 or 5xx), which is not the "
                   f"model's fault. Success without them: {sum(r['success'] for r in clean)}/{len(clean)}.", ""]
+    cited = [r["cites_source"] for r in records if r.get("cites_source") is not None]
+    if cited:
+        lines += [f"Answers naming the source of the data returned: {sum(cited)}/{len(cited)} (runs where a "
+                  "tool returned data; keyword check, not part of the success criterion).", ""]
     if completion and llm_s:
         lines += [f"Model output: {sum(completion)} tokens in {llm_s:.0f} s of model requests, "
                   f"{sum(completion) / llm_s:.1f} tokens/s end to end (includes prompt processing).", ""]
     lines += [
-        "| Question | Success | Median time (s) | Median tool calls | Unneeded calls | Failed calls | Repeated calls |",
-        "|---|---|---|---|---|---|---|",
+        "| Question | Success | Median time (s) | Median tool calls | Unneeded calls | Failed calls | Repeated calls | Names the source |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for qid, rs in by_id.items():
+        cites = [r["cites_source"] for r in rs if r.get("cites_source") is not None]
         lines.append(
             f"| {qid} | {sum(r['success'] for r in rs)}/{len(rs)} | {_median([r['seconds'] for r in rs])} "
             f"| {_median([r['calls'] for r in rs])} | {sum(r['calls_extra'] for r in rs)} "
-            f"| {sum(r['calls_failed'] for r in rs)} | {sum(r['calls_repeated'] for r in rs)} |")
+            f"| {sum(r['calls_failed'] for r in rs)} | {sum(r['calls_repeated'] for r in rs)} "
+            f"| {f'{sum(cites)}/{len(cites)}' if cites else '-'} |")
     lines += ["", "Unneeded calls: calls to tools the question does not need (looking up a municipality "
               "code is needed when the question names a town). Failed calls include tool errors the "
               "model caused (e.g. a wrong code) and expected errors (Strasbourg is not covered by DVF)."]
@@ -465,6 +506,7 @@ def main(argv: list[str] | None = None) -> None:
         envfile.load(args.env_file)
         cfg = load_config(args.config)
         check_config(cfg)
+        warn_if_remote(cfg["llm"])
     except (OSError, ValueError) as e:
         sys.exit(f"{args.config}: {e}")
     questions = json.loads(Path(args.questions).read_text(encoding="utf-8"))["questions"]
@@ -481,6 +523,7 @@ def main(argv: list[str] | None = None) -> None:
         "started": started.isoformat(timespec="seconds"),
         "label": args.label,
         "server_version": args.server_version,
+        "llm_remote_host": remote_llm_host(cfg["llm"]),  # None: the model runs on this machine
         "version": __version__,
         "commit": _command("git", "-C", str(HERE.parent), "rev-parse", "--short", "HEAD"),
         "machine": machine_info(),

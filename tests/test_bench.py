@@ -30,6 +30,20 @@ class TestChecks(unittest.TestCase):
         self.assertIn(2580, run.numbers_in("2,580 euros"))
         self.assertEqual(run.numbers_in("2580,5"), {2580, 5})
 
+    def test_cites_source(self):
+        dvf_result = json.dumps({"source": "DVF géolocalisées (DGFiP, processed by data.gouv.fr)"})
+        company = json.dumps({"source": "Recherche d'entreprises API (DINUM) - Sirene (INSEE) and RNE (INPI) data"})
+        geo = json.dumps({"source": "Découpage administratif API (geo.api.gouv.fr)"})
+        self.assertTrue(run.cites_source("2 580 € (source : DVF)", [dvf_result]))
+        self.assertTrue(run.cites_source("Selon les demandes de valeurs foncières…", [dvf_result]))
+        self.assertFalse(run.cites_source("2 580 €.", [dvf_result]))
+        self.assertTrue(run.cites_source("Source : API Recherche d’entreprises.", [company]))
+        self.assertFalse(run.cites_source("Une entreprise interne concernée.", [company]))  # no "rne" inside words
+        self.assertTrue(run.cites_source("Code 21054 (source : geo.api.gouv.fr)", [geo]))
+        self.assertTrue(run.cites_source("Code 21054 (API Géo)", [geo]))
+        self.assertIsNone(run.cites_source("Pas de données.", ["ERROR: not covered"]))
+        self.assertIsNone(run.cites_source("x", []))
+
     def test_value_at(self):
         self.assertEqual(run.value_at({"a": [{"b": 3}]}, "a.0.b"), 3)
         self.assertIsNone(run.value_at({"a": []}, "a.0.b"))

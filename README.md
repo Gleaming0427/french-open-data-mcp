@@ -36,7 +36,9 @@ machine. The tools need the Internet to fetch the data: each tool call sends the
 chosen by the model (company name or SIREN, postcode, municipality name or INSEE code,
 Légifrance search words) to the public APIs listed above; the DVF tool also reads the
 data.gouv.fr catalogue to find the yearly files. This project's code makes no other
-requests. Installing the model downloads it once from Hugging Face.
+requests. Installing the model downloads it once from Hugging Face. If `llm.base_url` in
+`config.json` points to another machine, the orchestrator and the benchmark print a warning
+at startup: questions and tool results would then be sent there.
 
 ## Tools
 
@@ -223,7 +225,9 @@ configuration, commit). Token counts come from the model server when it reports 
 request, so they include prompt processing. Runs during which a public API failed
 (network, HTTP 429 or 5xx) are counted and shown separately: they are not the model's
 fault. The script does not measure memory: read the model server's memory use in Activity
-Monitor during the run. `--only id1,id2` runs some questions only. `--questions
+Monitor during the run. The summary also counts the answers that name the source of the
+data returned (keyword check, not part of the success criterion). `--only id1,id2` runs some
+questions only. `--questions
 bench/questions_holdout.json` runs the held-out questions (see Limits).
 
 `bench/questions_holdout2.json` is a second held-out set of 16 questions, written after the
@@ -272,7 +276,8 @@ with every answer and tool result, `summary.md`):
 | `mcp_servers[].command` | Command that starts the MCP server as a subprocess (stdio) |
 | `mcp_servers[].tools` | Keep only these tools (small models choose better among few tools) |
 | `system_prompt` | Replaces the default instructions given to the model |
-| `max_turns`, `max_result_chars` | Limits of the tool loop |
+| `max_turns`, `max_result_chars` | Limits of the tool loop (model requests per question, characters of a tool result sent to the model) |
+| `max_tool_calls` | Tools actually run per question (default 10); beyond it, the model is told to answer with the results it has. The benchmark runs never exceeded 5 |
 
 An MCP server that cannot be started is skipped with a warning. Tool errors are passed to
 the model as text, so it can report them instead of guessing.
@@ -357,6 +362,12 @@ the model as text, so it can report them instead of guessing.
   M2 Max with 12 CPU cores and 30 GPU cores, 32 GB, model server mlx-engine (OVHcloud fork)
   `58083ca`. An INSEE code in the `municipality` field is rejected by the tool; accepting it
   would be a tool change, to be measured on new questions.
+- **Citing the source.** The instructions ask the model to cite the source given by the tool.
+  A keyword check added after the runs (`cites_source` in `bench/run.py`: DVF, Sirene,
+  Découpage administratif...), applied to the stored answers, finds the source of the data
+  named in 34 of the 60 held-out answers where a tool returned data. Most of the others name
+  the tool instead ("source: property_prices") or no source. This check is not part of the
+  success criterion.
 - **Not advice.** Answers are not legal, tax or financial advice. Check important
   answers against the cited source.
 

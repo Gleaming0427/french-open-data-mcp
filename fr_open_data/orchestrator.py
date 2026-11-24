@@ -22,6 +22,7 @@ import json
 import os
 import sys
 import time
+import urllib.parse
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -39,6 +40,10 @@ DEFAULT_SYSTEM_PROMPT = (
     "tool result contains the answer. End by citing the source given by the tool. Answer "
     "briefly, in the language of the question."
 )
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+# Sent instead of running a tool once the question has used max_tool_calls.
+TOOL_LIMIT_NOTE = ("ERROR: limit of {n} tool calls reached for this question; this call was not run. "
+                   "Answer now with the results you already have.")
 # Prefix of a tool result sent again when the model repeats an identical call.
 REPEATED_CALL_NOTE = "You already called this tool with these arguments; same result as before. Answer from it.\n"
 # Variables passed to MCP servers started as subprocesses (stdio), on top of the
@@ -120,13 +125,14 @@ def source_of(text: str) -> str | None:
 class Orchestrator:
     def __init__(self, llm_config: dict[str, Any], clients: dict[str, Client], *,
                  tool_filters: dict[str, list[str]] | None = None, system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-                 max_turns: int = 6, max_result_chars: int = 8000) -> None:
+                 max_turns: int = 6, max_result_chars: int = 8000, max_tool_calls: int = 10) -> None:
         self.cfg = llm_config
         self.clients = clients
         self.filters = tool_filters or {}
         self.system_prompt = system_prompt
         self.max_turns = max_turns
         self.max_result_chars = max_result_chars
+        self.max_tool_calls = max_tool_calls  # tools actually run per question (max_turns limits model requests)
         self.tools: list[dict[str, Any]] = []
         self.routes: dict[str, tuple[str, str]] = {}  # exposed name -> (server, original name)
         self.unavailable: dict[str, str] = {}  # server -> reason
@@ -196,6 +202,7 @@ class Orchestrator:
                                           {"role": "user", "content": question}]
         out = Answer(text="")
         done: dict[tuple[str, str], tuple[str, ToolCall]] = {}  # successful calls of this question
+        executed = 0
         for turn in range(1, self.max_turns + 1):
             out.turns = turn
             reply = await anyio.to_thread.run_sync(self._request, messages)
@@ -226,7 +233,13 @@ class Orchestrator:
                     # send back the earlier result instead of querying the API again.
                     text, trace = done[key]
                     text, trace = REPEATED_CALL_NOTE + text, replace(trace, repeated=True, seconds=0.0)
+                elif executed >= self.max_tool_calls:
+                    text = TOOL_LIMIT_NOTE.format(n=self.max_tool_calls)
+                    server, original = self.routes.get(c["name"], ("?", c["name"]))
+                    trace = ToolCall(server, original, args if args is not None else c["arguments"], True, None,
+                                     text[:200], result=text)
                 else:
+                    executed += 1
                     text, trace = await self._execute(c["name"], c["arguments"])
                     if key and not trace.error:
                         done[key] = (text, trace)
@@ -252,6 +265,19 @@ def check_config(cfg: dict[str, Any]) -> None:
                              "this machine over stdio are supported (copy config.example.json again).")
 
 
+def remote_llm_host(llm_cfg: dict[str, Any]) -> str | None:
+    """The host of llm.base_url when it is not this machine, else None."""
+    host = urllib.parse.urlparse(llm_cfg.get("base_url") or "").hostname
+    return None if host in LOCAL_HOSTS else (host or "?")
+
+
+def warn_if_remote(llm_cfg: dict[str, Any]) -> None:
+    host = remote_llm_host(llm_cfg)
+    if host:
+        print(f"warning: llm.base_url points to {host}, not to this machine: questions and tool results "
+              "will be sent there. This project is meant for a local model.", file=sys.stderr)
+
+
 def from_config(cfg: dict[str, Any]) -> Orchestrator:
     servers = cfg.get("mcp_servers") or []
     return Orchestrator(
@@ -261,6 +287,7 @@ def from_config(cfg: dict[str, Any]) -> Orchestrator:
         system_prompt=cfg.get("system_prompt", DEFAULT_SYSTEM_PROMPT),
         max_turns=cfg.get("max_turns", 6),
         max_result_chars=cfg.get("max_result_chars", 8000),
+        max_tool_calls=cfg.get("max_tool_calls", 10),
     )
 
 
@@ -275,6 +302,7 @@ def show(a: Answer) -> None:
 
 
 async def _main(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
+    warn_if_remote(cfg["llm"])
     key_env = cfg["llm"].get("api_key_env")
     if key_env and not os.environ.get(key_env):
         print(f"warning: {key_env} is not set (environment or {args.env_file}): requests are sent without a key",

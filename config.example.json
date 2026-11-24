@@ -12,6 +12,7 @@
     {"name": "french-open-data", "command": ["python3", "-m", "fr_open_data.server"]}
   ],
   "max_turns": 6,
+  "max_tool_calls": 10,
   "max_result_chars": 8000,
   "_other_llms": {
     "ollama_local": {

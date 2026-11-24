@@ -9,7 +9,7 @@ from mcp import Client
 from mcp.server.mcpserver import MCPServer
 
 from fr_open_data import llm
-from fr_open_data.orchestrator import Orchestrator, client_from_config
+from fr_open_data.orchestrator import Orchestrator, client_from_config, remote_llm_host
 from fr_open_data.server import build_server
 from tools import fake_llm
 
@@ -116,6 +116,27 @@ class TestOrchestrator(FakeLlm, unittest.IsolatedAsyncioTestCase):
         self.assertEqual([t.repeated for t in a.tool_calls], [False, True])
         self.assertEqual(a.tool_calls[1].source, "Fake source")
         self.assertIn("already called", a.text)
+
+    async def test_tool_call_limit(self):
+        srv = test_server()
+        runs = []
+
+        @srv.tool()
+        def property_prices(insee_code: str) -> str:
+            """Fake prices."""
+            runs.append(insee_code)
+            return json.dumps({"source": "Fake source"})
+
+        async with Orchestrator(self.cfg(), {"t": Client(srv)}, max_tool_calls=0) as o:
+            a = await o.answer("price 21054")
+        self.assertEqual(runs, [])
+        self.assertTrue(a.tool_calls[0].error)
+        self.assertIn("limit of 0 tool calls", a.text)
+
+    def test_remote_llm_host(self):
+        self.assertIsNone(remote_llm_host({"base_url": "http://127.0.0.1:8000/v1"}))
+        self.assertIsNone(remote_llm_host({"base_url": "http://localhost:11434/v1"}))
+        self.assertEqual(remote_llm_host({"base_url": "https://api.example.org/v1"}), "api.example.org")
 
     async def test_name_collisions_are_prefixed(self):
         clients = {"a": Client(test_server("a")), "b": Client(test_server("b"))}
