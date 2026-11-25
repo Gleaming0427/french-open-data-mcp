@@ -6,3 +6,5 @@ config.json
 .env
 # Ollama Modelfiles created for the comparison (see README, section 8)
 Modelfile*
+# Local copies of config.json for other settings (e.g. config.medium.json)
+/config.*.json
