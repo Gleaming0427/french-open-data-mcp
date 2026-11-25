@@ -18,15 +18,20 @@ model card sampling.
 | `20261124-150625` | Olala | tools v3 (`729b340`) | `questions.json` | 23/24 (the tools were adjusted on these questions) |
 | `20261124-152301` | Olala | tools v3 (`729b340`) | `questions_holdout.json` | 18/24 as run, 20/24 re-checked (1) |
 | `20261124-160832` | Olala | tools v3 (`1bdba5b`) | `questions_holdout2.json` | 37/48 |
+| `20261124-173004` | qwen3:8b (Ollama 0.40.6) | tools v3 (`f516417`) | `questions_holdout.json` + `questions_holdout2.json` | 71/72 as run, 72/72 re-checked (2) |
 
 (1) The check of the SIREN question required the whole API name, "TOTALENERGIES SE
 (TOTALENERGIE SE)"; it was changed to "TOTALENERGIES" in commit `3fd3ad1`, 22 seconds after
 the run started and before its results were known. Both summaries are kept.
 
-A comparison run of `qwen3:8b` (Ollama, tools v3, commit `f516417`) on the 24 held-out
-questions gave 71/72 as scored during the run. Its only failure was a correct answer whose
-tool result had been cut at 8000 characters, which the checks of that time could not read;
-the checks were then fixed (commit `40e84e0`). Its folder is added here when published.
+(2) The only failure during the run was a correct answer ("1490") whose tool result had been
+cut at 8000 characters (the model had asked for 25 companies), which the checks of that time
+could not read. The checks were fixed in commit `40e84e0` and re-applied on 2026-11-25
+(`summary.md`; the summary written during the run is kept in `summary-as-run.md`). On the
+same 72 runs, Olala gave 57/72 re-checked (55 as run), with a median of 13.2 s per question
+against 19.6 s for qwen3:8b; qwen3:8b named the source of the data in 63 of 63 answers,
+Olala in 34 of 60. The two engines differ (mlx-engine and Ollama), as do the reasoning
+settings (Olala low, qwen3 Ollama's default).
 
 ## What these runs showed
 

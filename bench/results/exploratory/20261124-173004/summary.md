@@ -7,10 +7,11 @@
 - Code: french-open-data-mcp 0.1.0, commit `f516417`
 - Questions: `questions_holdout.json`, `questions_holdout2.json`, 24 questions
 - Runs: 3 per question, 72 in total
+- Checks re-applied on 2026-11-25T09:59:14+00:00 with `questions_holdout.json, questions_holdout2.json` (commit `fbc1474`) to 72 stored runs; the summary written during the run is kept in summary-as-run.md
 
-**Success: 71/72** (expected tool calls succeeded and the answer contains the tool's figure).
+**Success: 72/72 (100%, 95% interval 95%-100%)** (expected tool calls succeeded and the answer contains the tool's figure; runs of the same question are not independent, so the real uncertainty is larger).
 
-Answers naming the source of the data returned: 62/62 (runs where a tool returned data; keyword check, not part of the success criterion).
+Answers naming the source of the data returned: 63/63 (runs where a tool returned data; keyword check, not part of the success criterion).
 
 Model output: 38587 tokens in 1342 s of model requests, 28.7 tokens/s end to end (includes prompt processing).
 
@@ -22,7 +23,7 @@ Model output: 38587 tokens in 1342 s of model requests, 28.7 tokens/s end to end
 | dvf-marseille-8-apartment-m2 | 3/3 | 19.9 | 1 | 0 | 0 | 0 | 3/3 |
 | dvf-lyon-3-apartment-m2-2024 | 3/3 | 21.0 | 1 | 0 | 0 | 0 | 3/3 |
 | dvf-metz-not-covered | 3/3 | 17.3 | 1 | 0 | 2 | 0 | - |
-| companies-bordeaux-naf-56-10a | 2/3 | 28.4 | 1 | 0 | 0 | 0 | 2/2 |
+| companies-bordeaux-naf-56-10a | 3/3 | 28.4 | 1 | 0 | 0 | 0 | 3/3 |
 | company-name-siren | 3/3 | 22.6 | 1 | 0 | 0 | 0 | 3/3 |
 | municipality-code-rennes | 3/3 | 10.3 | 1 | 0 | 0 | 0 | 3/3 |
 | municipality-code-grenoble | 3/3 | 12.2 | 1 | 0 | 0 | 0 | 3/3 |
@@ -42,11 +43,5 @@ Model output: 38587 tokens in 1342 s of model requests, 28.7 tokens/s end to end
 | company-name-441639465 | 3/3 | 20.2 | 1 | 0 | 0 | 0 | 3/3 |
 
 Unneeded calls: calls to tools the question does not need (looking up a municipality code is needed when the question names a town). Failed calls include tool errors the model caused (e.g. a wrong code) and expected errors (Strasbourg is not covered by DVF).
-
-## Failures
-
-| Question | Run | Reason | Calls made | Answer (start) |
-|---|---|---|---|---|
-| companies-bordeaux-naf-56-10a | 1 | missing or wrong call: search_companies; answer (no value at total_results in the search_companies result) | search_companies(naf_code=56.10A, municipality=Bordeaux, include_closed=False, limit=25) | 1490 entreprises actives ayant pour activité principale le code NAF 56.10A (restauration traditionnelle) et au moins un établissement à Bordeaux. Source : Reche… |
 
 Memory used by the model server: not measured by this script (read it in Activity Monitor).
