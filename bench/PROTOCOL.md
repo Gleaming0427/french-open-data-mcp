@@ -83,10 +83,37 @@ from the session that wrote it): before phase 2 starts, each tag is confirmed wi
 `ollama pull`; a missing model is replaced by the closest available version, and the tags
 used are recorded below.
 
-### Recorded before phase 2
+### Recorded before phase 2 (2026-11-25, before any run on the test set)
 
-- Ollama version: (to fill in)
-- Tags: (to fill in)
+**Phase 1 results** (development set, 64 runs each, commit `fbc1474`, folders in `bench/results/`):
+
+| Setting | Folder | Success | Median time per run | Output tokens per question |
+|---|---|---|---|---|
+| `q5e6`, reasoning low | `20261125-100314` | 60/64 | 15.5 s | 1,248 |
+| `q5e6`, reasoning medium | `20261125-102329` | 61/64 | 20.3 s | 1,801 |
+| `q5e6`, reasoning high | `20261125-110218` | 56/64 | 29.0 s | 2,678 |
+| `q8`, reasoning low | `20261125-115439` | 58/64 | 15.6 s | 1,252 |
+
+Rule applied: medium has the highest success (61); low is within 2 runs (60) and faster
+(15.5 s against 20.3 s); high and q8 are more than 2 runs behind. **Chosen for phase 2:
+`q5e6`, reasoning low.** Not taken into account by the rule, and reported here: among their
+failed runs, low gave two answers with an invented fact (a price per m² for Paris 15th with
+no tool result; "Marseille has 7 arrondissements"), medium gave none.
+
+**Ollama**: version 0.40.6. Models as installed (`ollama list`, `ollama show`):
+
+| Tag | ID | Size | Notes |
+|---|---|---|---|
+| `qwen3:8b` | `500a1f067a9f` | 5.2 GB | |
+| `qwen3:4b` | `359d7dd4bcda` | 2.5 GB | |
+| `qwen3:1.7b` | `8f68893c685c` | 1.4 GB | |
+| `mistral:7b` | `6577803aa9a0` | 4.4 GB | 7.2B parameters, Q4_K_M, capabilities completion and tools; Ollama does not display the version (v0.3 is likely: the first Mistral 7B version with tool calling) |
+| `ministral-3:8b` | `1922accd5827` | 6.0 GB | 8.9B parameters, Q4_K_M, capabilities completion, vision and tools, no thinking capability listed (instruct variant); default temperature 0.15 |
+
+Each runs through a model created with `PARAMETER num_ctx 8192` (`qwen3-8b-ctx8k`,
+`qwen3-4b-ctx8k`, `qwen3-1.7b-ctx8k`, `mistral-7b-ctx8k`, `ministral-3-8b-ctx8k`). The Ollama
+models are 4-bit quantizations (Q4_K_M where displayed), more compressed than Olala's `q5e6`
+(5.76 bits per weight according to its MLX model card).
 
 ## Conditions
 
