@@ -70,10 +70,23 @@ of each other, the one with the lower median time per question is chosen.
 3 runs per question (120 runs) for each model:
 
 - Olala with the settings chosen in phase 1;
-- `qwen3:8b`, `qwen3:4b` and `qwen3:1.7b` served by Ollama, with Ollama's default sampling
-  and thinking, and a context of 8192 tokens (a model created with `PARAMETER num_ctx 8192`).
-  These models are not tuned. If a tag does not exist, it is replaced before phase 2 starts,
-  and the replacement is recorded here.
+- `qwen3:8b`, `qwen3:4b` and `qwen3:1.7b` served by Ollama;
+- two Mistral AI models served by Ollama, as European points of comparison: Mistral 7B
+  Instruct v0.3, and Ministral 3 8B in its instruct variant if Ollama offers one (Olala's
+  model card scored the reasoning variant, 42.0 on BFCL V3, against 48.2 for Mistral 7B v0.3
+  and 59.6 for Olala).
+
+The Ollama models run with Ollama's default sampling and thinking and a context of 8192
+tokens (a model created with `PARAMETER num_ctx 8192`). They are not tuned. Their exact
+Ollama tags were not checked when this protocol was written (ollama.com could not be reached
+from the session that wrote it): before phase 2 starts, each tag is confirmed with
+`ollama pull`; a missing model is replaced by the closest available version, and the tags
+used are recorded below.
+
+### Recorded before phase 2
+
+- Ollama version: (to fill in)
+- Tags: (to fill in)
 
 ## Conditions
 
