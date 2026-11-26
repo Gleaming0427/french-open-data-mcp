@@ -54,6 +54,13 @@ pooled.
   the history of its branches, because they keep the full tool results, which include
   personal data from public registers (names of company directors, names and addresses of
   sole proprietors). This changes neither the measurements nor the checks.
+  Added on 2026-11-26, later: `bench/results/` now keeps only the results of phase 2.
+  The folders of phase 1 (their figures are in the table below) and of the exploratory runs
+  of 2026-11-24 were removed. So were the raw runs of two interrupted runs on the test set,
+  which had no summary and no recorded label: `20261125-132126` (7 runs, none successful)
+  and `20261126-085827` (1 run, successful). Until then, `bench/run.py` wrote `meta.json`
+  only at the end of a run; it now also writes it at the start, so that an interrupted run
+  keeps its label (its `meta.json` then has no `finished` time).
 
 ## Phase 1: settings of Olala (development set only)
 
@@ -90,7 +97,7 @@ used are recorded below.
 
 ### Recorded before phase 2 (2026-11-25, before any run on the test set)
 
-**Phase 1 results** (development set, 64 runs each, commit `fbc1474`, folders in `bench/results/`):
+**Phase 1 results** (development set, 64 runs each, commit `fbc1474`, folders in `bench/results/` until 2026-11-26):
 
 | Setting | Folder | Success | Median time per run | Output tokens per question |
 |---|---|---|---|---|

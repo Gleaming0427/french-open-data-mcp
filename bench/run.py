@@ -2,9 +2,9 @@
 
   python -m bench.run --config config.json --runs 3 --label "Olala q5e6, MacBook Pro M2 Max"
 
-For each run of each question (bench/questions.json), it records the tools called, their
-arguments, results and duration, the model requests (duration and token counts when the
-server reports them), and checks:
+For each run of each question (bench/questions_dev.json or bench/questions_test.json), it
+records the tools called, their arguments, results and duration, the model requests
+(duration and token counts when the server reports them), and checks:
 - that the expected tool calls succeeded with the expected arguments, or returned the
   expected data (e.g. the DVF result is for the right municipality and year);
 - that the answer contains the figure returned by the tool in this run (or the expected
@@ -14,11 +14,13 @@ server reports them), and checks:
 Results go to bench/results/<date>-<time>/: meta.json (machine, model, configuration),
 runs.jsonl (one line per run, with the full answer and tool results; never committed: it
 includes personal data from public registers) and summary.md (tables to publish).
+meta.json is written when the run starts and again when it ends: the meta.json of an
+interrupted run has no "finished" time.
 The memory used by the model server is not measured: read it in Activity Monitor.
 
   python -m bench.run --summarize latest     # rebuild summary.md of the latest results
 
-  python -m bench.run --validate --questions bench/questions_holdout2.json
+  python -m bench.run --validate --questions bench/questions_test.json
                                               # check the questions against the tools, no model
 
 --validate calls the tools directly with the arguments given in each question's 'validate'
@@ -547,6 +549,10 @@ def server_health(llm_cfg: dict[str, Any]) -> Any:
 
 # ---------------------------------------------------------------- main
 
+def write_meta(out_dir: Path, meta: dict[str, Any]) -> None:
+    (out_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 async def _run(args: argparse.Namespace, cfg: dict[str, Any], questions: list[dict[str, Any]],
                out_dir: Path, meta: dict[str, Any]) -> list[dict[str, Any]]:
     records = []
@@ -554,6 +560,9 @@ async def _run(args: argparse.Namespace, cfg: dict[str, Any], questions: list[di
         if orch.unavailable:
             sys.exit(f"MCP server unavailable: {orch.unavailable}")
         meta["tools"] = sorted(orch.routes)
+        # Written now and again at the end, so that an interrupted run keeps its label and
+        # settings (its meta.json then has no "finished" time).
+        write_meta(out_dir, meta)
         with open(out_dir / "runs.jsonl", "w", encoding="utf-8") as f:
             for q in questions:
                 for n in range(1, args.runs + 1):
@@ -627,7 +636,7 @@ def main(argv: list[str] | None = None) -> None:
     }
     records = anyio.run(_run, args, cfg, questions, out_dir, meta)
     meta["finished"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-    (out_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_meta(out_dir, meta)
     summary = summarize(records, meta)
     (out_dir / "summary.md").write_text(summary, encoding="utf-8")
     print("\n" + summary)

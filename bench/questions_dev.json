@@ -1,5 +1,5 @@
 {
-  "_note": "Development set (32 questions): the questions of the exploratory runs (bench/results/exploratory/), with the checks of tools v4. It may be used to choose settings (see bench/PROTOCOL.md); a score on it is not a measure of reliability. Same format as the test set.",
+  "_note": "Development set (32 questions): the questions of the exploratory runs of 2026-11-24, with the checks of tools v4. It may be used to choose settings (see bench/PROTOCOL.md); a score on it is not a measure of reliability. Same format as the test set.",
   "questions": [
     {
       "id": "municipality-code-beaune",

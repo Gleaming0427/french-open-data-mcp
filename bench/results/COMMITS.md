@@ -12,23 +12,19 @@ The Git history of this repository was rewritten twice to remove personal data:
   "Benchmark results: questions file path made relative in meta.json" now changes nothing.
   The identifiers of that commit and of every later commit changed again.
 
-The files of every commit are otherwise unchanged: tools, scripts, questions, settings,
-`summary.md` and `meta.json`. The `meta.json` and `summary.md` files of the runs, and the
-documents written before these dates, keep the identifiers recorded at the time. They
-correspond to these commits:
+GitHub kept serving the old commits by their identifier after these rewrites. On
+2026-11-26, the GitHub repository was therefore deleted and created again with the same
+name, from the rewritten history. The recorded identifiers below no longer exist on GitHub.
 
-| Recorded | Current | Date (UTC) | Commit |
-|---|---|---|---|
-| `8422176` | `301cf64` | 2026-11-24 12:09 | Add a reproducible benchmark (bench/run.py) |
-| `f31ebe4` | `1cc822c` | 2026-11-24 12:30 | Benchmark: check the company search on the filters applied; Strasbourg |
-| `729b340` | `fe0aa8a` | 2026-11-24 15:00 | Benchmark: held-out questions; questions file in the summary |
-| `3fd3ad1` | `c0ab15f` | 2026-11-24 15:23 | Held-out benchmark: check the company name on "TOTALENERGIES" |
-| `1f310a9` | `a9633a3` | 2026-11-24 15:43 | Benchmark: re-apply checks to stored runs; held-out results in README |
-| `1bdba5b` | `9df71c4` | 2026-11-24 16:06 | Benchmark results: questions file path made relative in meta.json |
-| `f516417` | `9b78830` | 2026-11-24 17:20 | Prepare the comparison with models served by Ollama |
-| `40e84e0` | `f2da8cb` | 2026-11-24 17:55 | Benchmark: read the leading fields of a truncated tool result; ignore Modelfiles |
-| `fbc1474` | `4ff3fc5` | 2026-11-25 10:57 | Add exploratory qwen3:8b run |
-| `ace3195` | `16bb01d` | 2026-11-25 13:23 | Phase 1 results (dev set): q5e6 low/medium/high, q8 low |
+The files of every commit are otherwise unchanged: tools, scripts, questions, settings,
+`summary.md` and `meta.json`. The files written before these dates keep the identifiers
+recorded at the time. Those still referenced in the repository correspond to these commits:
+
+| Recorded | Current | Date (UTC) | Commit | Referenced by |
+|---|---|---|---|---|
+| `fbc1474` | `4ff3fc5` | 2026-11-25 09:57 | Add exploratory qwen3:8b run | phase 1 results, in `bench/PROTOCOL.md` |
+| `ace3195` | `16bb01d` | 2026-11-25 12:23 | Phase 1 results (dev set): q5e6 low/medium/high, q8 low | `20261125-123052` (Olala, phase 2) |
+| `bff70a7` | `8364f17` | 2026-11-25 13:19 | Phase 2: Olala q5e6 low, test set | `20261125-132556`, `20261125-134016`, `20261125-134910` (Ollama models, phase 2) |
 
 In a clone made before 2026-11-25, which still has the recorded commits,
 `git diff <recorded> <current>` shows only the removed `runs.jsonl` files.

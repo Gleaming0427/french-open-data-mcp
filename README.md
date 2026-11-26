@@ -270,9 +270,45 @@ were developed while testing Olala.
 
 ### Results
 
-No result under the protocol yet. The exploratory runs of 2026-11-24 (tools v1 to v3, made
-while the tools were being adjusted, without a fixed protocol) are archived with their
-questions in [`bench/results/exploratory/`](bench/results/exploratory/README.md).
+Phase 2 of the protocol: the 40 test questions, 3 runs each (120 runs per model), on the
+same Mac (M2 Max, 32 GB) with the same MCP server, instructions and limits. No run was hit
+by a public API error. Each folder's `summary.md` gives the results by category and by
+question, and the failures with the calls made.
+
+| Model | Served by | Success (95% interval) | Answers naming the source | Results |
+|---|---|---|---|---|
+| qwen3:8b | Ollama 0.40.6 | 120/120 (97%-100%) | 105/105 | [`20261125-134910`](bench/results/20261125-134910/summary.md) |
+| Olala 1.0 mini, `q5e6`, reasoning low | mlx-engine (OVHcloud fork) `58083ca` | 113/120 (88%-97%) | 68/108 | [`20261125-123052`](bench/results/20261125-123052/summary.md) |
+| ministral-3:8b | Ollama 0.40.6 | 84/120 (61%-77%) | 78/91 | [`20261125-132556`](bench/results/20261125-132556/summary.md) |
+| mistral:7b | Ollama 0.40.6 | 14/120 (7%-19%) | - | [`20261125-134016`](bench/results/20261125-134016/summary.md) |
+
+- **mistral:7b called no tool** in any of its 120 runs. Its 14 successes are all in the
+  category where DVF has no data, where the criterion is the absence of a figure.
+- **ministral-3:8b** called no tool in 25 runs; most of its failures are DVF questions
+  (town 6/15, arrondissement 3/15, half-year 5/15).
+- **Olala** failed 7 runs: company counts by NAF code (11/15) and by activity section
+  (13/15), and one arrondissement (14/15).
+- **Not run**: qwen3:4b and qwen3:1.7b, planned by the protocol.
+- **To state with these figures**: the runs of one question are not independent, so the
+  real uncertainty is larger than the intervals; the Ollama models are 4-bit quantizations
+  run with Ollama's default sampling and thinking; the tools were developed while testing
+  Olala; speeds are not compared, since the engines differ. "Answers naming the source"
+  counts the runs where a tool returned data (keyword check, not part of the criterion).
+
+**What the earlier runs showed.** Their folders were removed on 2026-11-26.
+
+- *Phase 1* (development set, 64 runs per setting of Olala): `q5e6` with reasoning low
+  60/64, medium 61/64, high 56/64; `q8` low 58/64. Low was chosen, within 2 runs of medium
+  and faster; among its failures were two answers with an invented fact, against none for
+  medium. Details in [`bench/PROTOCOL.md`](bench/PROTOCOL.md).
+- *Exploratory runs* (2026-11-24, tools v1 to v3, no fixed protocol, scores not
+  comparable): the model passed an INSEE code other than the one it had looked up (the
+  tools now take municipality names); gave the number of companies listed (5) instead of
+  the total, put the activity in the search text or passed a section letter as a NAF code;
+  asked for the whole city instead of an arrondissement, wrote the first half of 2026 as
+  "2026-S2" or "2026-01", and did not retry after an error. It never invented a figure for
+  areas DVF does not cover (9/9). The tools v4 address these failures. On the held-out
+  questions, qwen3:8b already had 72/72 against 57/72 for Olala (re-checked).
 
 ## What is never committed
 
@@ -340,11 +376,11 @@ the model as text, so it can report them instead of guessing.
   still fails, the tool returns the error and the model reports it.
 - **Small model.** Olala mini has about 1B active parameters per token (model card); OVHcloud
   reports 59.6 on the BFCL V3 tool-calling benchmark, measured with `reasoning_effort`
-  high. In the exploratory runs (`bench/results/exploratory/`), it handled simple lookups
-  well and failed mostly when the question had to be turned into parameters (half-year,
-  arrondissement, activity section) or a total had to be read from a search result. The
-  tools v4 address the failures seen there (see `bench/PROTOCOL.md`); their effect is
-  measured under the protocol.
+  high. In the exploratory runs, it handled simple lookups well and failed mostly when the
+  question had to be turned into parameters (half-year, arrondissement, activity section)
+  or a total had to be read from a search result. With the tools v4, it succeeded in 113
+  of the 120 test runs; its failures were company counts and one arrondissement (see
+  [Results](#results)).
 - **Not advice.** Answers are not legal, tax or financial advice. Check important
   answers against the cited source.
 
@@ -366,7 +402,7 @@ bench/run.py         benchmark: runs, checks, summaries, --validate, --summarize
 bench/questions_dev.json   development questions (may be used to choose settings)
 bench/questions_test.json  test questions (never used to choose anything)
 bench/config.ollama.json   configuration for measuring a model served by Ollama
-bench/results/       results; exploratory/ holds the runs made before the protocol
+bench/results/       phase 2 results (summary.md and meta.json of each run), COMMITS.md
 tools/fake_llm.py    fake OpenAI-compatible server for tests
 .githooks/           pre-commit and pre-push checks against publishing personal data
 tests/               offline tests (unittest)

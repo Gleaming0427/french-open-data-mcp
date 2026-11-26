@@ -1,0 +1,39 @@
+{
+  "started": "2026-11-25T13:49:10+00:00",
+  "label": "Phase 2: qwen3:8b, test",
+  "server_version": "ollama version is 0.40.6",
+  "llm_remote_host": null,
+  "version": "0.1.0",
+  "commit": "bff70a7",
+  "machine": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.14.6",
+    "chip": "Apple M2 Max",
+    "memory_gb": 32,
+    "macos": "27.0.1",
+    "model": "MacBook Pro",
+    "model_id": "Mac14,5",
+    "cpu_cores": "12 (8 Performance and 4 Efficiency)",
+    "gpu_cores": "30"
+  },
+  "llm": {
+    "base_url": "http://localhost:11434/v1",
+    "model": "qwen3-8b-ctx8k",
+    "stream": false,
+    "tool_choice": null,
+    "max_tokens": 4096,
+    "params": {}
+  },
+  "server_health": "unavailable (HTTPError)",
+  "max_turns": 6,
+  "runs": 3,
+  "questions_file": "bench/questions_test.json",
+  "tools": [
+    "company_profile",
+    "count_companies",
+    "find_municipality",
+    "property_prices",
+    "search_companies"
+  ],
+  "finished": "2026-11-25T14:42:32+00:00"
+}

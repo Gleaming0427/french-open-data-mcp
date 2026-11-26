@@ -1,10 +1,10 @@
 {
-  "started": "2026-11-24T17:30:04+00:00",
-  "label": "qwen3:8b (Ollama), M2 Max, held-out 1+2",
+  "started": "2026-11-25T13:25:56+00:00",
+  "label": "Phase 2: ministral-3:8b, test",
   "server_version": "ollama version is 0.40.6",
   "llm_remote_host": null,
   "version": "0.1.0",
-  "commit": "f516417",
+  "commit": "bff70a7",
   "machine": {
     "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
     "python": "3.14.6",
@@ -18,7 +18,7 @@
   },
   "llm": {
     "base_url": "http://localhost:11434/v1",
-    "model": "qwen3-8b-ctx8k",
+    "model": "ministral-3-8b-ctx8k",
     "stream": false,
     "tool_choice": null,
     "max_tokens": 4096,
@@ -27,15 +27,13 @@
   "server_health": "unavailable (HTTPError)",
   "max_turns": 6,
   "runs": 3,
-  "questions_file": [
-    "bench/questions_holdout.json",
-    "bench/questions_holdout2.json"
-  ],
+  "questions_file": "bench/questions_test.json",
   "tools": [
     "company_profile",
+    "count_companies",
     "find_municipality",
     "property_prices",
     "search_companies"
   ],
-  "finished": "2026-11-24T17:53:45+00:00"
+  "finished": "2026-11-25T13:38:53+00:00"
 }
