@@ -3,7 +3,9 @@
 These runs were made while the tools were being adjusted, before `bench/PROTOCOL.md` was
 written. The tools, the checks and the questions changed between runs, so the scores are
 not comparable with each other, nor with the runs made under the protocol. They are kept
-for transparency. The question files used are in this folder.
+for transparency. The question files used are in this folder. The commit identifiers are
+those recorded at the time; [`../COMMITS.md`](../COMMITS.md) gives their current identifiers
+after the history rewrites of 2026-11-25 and 2026-11-26.
 
 Machine: MacBook Pro (Mac14,5), Apple M2 Max, 12 CPU cores, 30 GPU cores, 32 GB. Olala
 1.0 mini `q5e6` served by OVHcloud's mlx-engine fork (`58083ca`), `reasoning_effort` low,

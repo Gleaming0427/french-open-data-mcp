@@ -234,7 +234,8 @@ returned in that run (or the expected text; or no euro amount where DVF has no d
 Results go to `bench/results/<date>-<time>/`: `summary.md` (success with 95% intervals, by
 category and by question, failures with the calls made), `runs.jsonl` (every answer and
 tool result; it stays on your machine, see [What is never committed](#what-is-never-committed))
-and `meta.json` (machine, model, settings, commit). Token counts come from the
+and `meta.json` (machine, model, settings, commit; identifiers recorded before 2026-11-26
+are listed with their current ones in [`bench/results/COMMITS.md`](bench/results/COMMITS.md)). Token counts come from the
 model server when it reports them; tokens/s include prompt processing. Runs hit by a public
 API error (network, HTTP 429 or 5xx) are shown separately. Whether the answer names the
 source of the data is reported, but is not part of the success criterion. The script does

@@ -126,6 +126,10 @@ Same Mac (MacBook Pro Mac14,5, Apple M2 Max, 12 CPU cores, 30 GPU cores, 32 GB);
 server at a time; the label and model server version of each run are recorded in its
 `meta.json`.
 
+The commit identifiers in this file and in the results are those recorded at the time. The
+history was rewritten afterwards to remove personal data; `bench/results/COMMITS.md` gives
+the current identifier of each.
+
 ## Not covered
 
 The Légifrance tools (not tested against the live API). Speeds are not compared across
