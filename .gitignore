@@ -8,3 +8,8 @@ config.json
 Modelfile*
 # Local copies of config.json for other settings (e.g. config.medium.json)
 /config.*.json
+# Raw benchmark runs: full tool results, which include personal data from public registers
+# (names of company directors, names and addresses of sole proprietors). Removed from the
+# history of every branch on 2026-11-25; summary.md and meta.json are published. See the README,
+# "What is never committed".
+runs.jsonl

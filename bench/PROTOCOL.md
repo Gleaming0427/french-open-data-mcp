@@ -49,6 +49,11 @@ pooled.
 - Memory used by the model server: read in Activity Monitor and reported by hand.
 - Every run is published in `bench/results/`, including interrupted runs and the settings
   that were not chosen.
+  Added on 2026-11-26: since 2026-11-25, the published files of a run are `summary.md`
+  and `meta.json`. The raw runs (`runs.jsonl`) were removed from the repository and from
+  the history of its branches, because they keep the full tool results, which include
+  personal data from public registers (names of company directors, names and addresses of
+  sole proprietors). This changes neither the measurements nor the checks.
 
 ## Phase 1: settings of Olala (development set only)
 

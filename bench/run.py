@@ -12,7 +12,8 @@ server reports them), and checks:
 - that the model did not fail (error, or no answer within max_turns).
 
 Results go to bench/results/<date>-<time>/: meta.json (machine, model, configuration),
-runs.jsonl (one line per run, with the full answer) and summary.md (tables to publish).
+runs.jsonl (one line per run, with the full answer and tool results; never committed: it
+includes personal data from public registers) and summary.md (tables to publish).
 The memory used by the model server is not measured: read it in Activity Monitor.
 
   python -m bench.run --summarize latest     # rebuild summary.md of the latest results

@@ -233,7 +233,8 @@ DVF, the right municipality and period) and the answer contains the figure the t
 returned in that run (or the expected text; or no euro amount where DVF has no data).
 Results go to `bench/results/<date>-<time>/`: `summary.md` (success with 95% intervals, by
 category and by question, failures with the calls made), `runs.jsonl` (every answer and
-tool result) and `meta.json` (machine, model, settings, commit). Token counts come from the
+tool result; it stays on your machine, see [What is never committed](#what-is-never-committed))
+and `meta.json` (machine, model, settings, commit). Token counts come from the
 model server when it reports them; tokens/s include prompt processing. Runs hit by a public
 API error (network, HTTP 429 or 5xx) are shown separately. Whether the answer names the
 source of the data is reported, but is not part of the success criterion. The script does
@@ -271,6 +272,37 @@ were developed while testing Olala.
 No result under the protocol yet. The exploratory runs of 2026-11-24 (tools v1 to v3, made
 while the tools were being adjusted, without a fixed protocol) are archived with their
 questions in [`bench/results/exploratory/`](bench/results/exploratory/README.md).
+
+## What is never committed
+
+The repository is public. These files stay on your machine (`.gitignore`):
+
+- `.env` and `config.json`: keys and local settings;
+- `runs.jsonl` in `bench/results/`: the raw runs keep the full tool results, which include
+  personal data from public registers (names of company directors, names and addresses of
+  sole proprietors). The raw runs were removed from the history of every branch on
+  2026-11-25. `summary.md` and `meta.json` are published.
+
+Two Git hooks in `.githooks/` refuse a commit or a push that would publish personal data: a
+`runs.jsonl` file, an absolute path to a home folder (such as `/Users/<name>/...`, which
+contains the name of the account), an author or committer email that is not a GitHub
+noreply address, or a word listed in `.git/info/private-words`. Enable them once in each
+clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Then list the words that must never be published, one per line, for example your first and
+last name (the file is inside `.git`, so it is never committed):
+
+```bash
+printf 'Firstname\nLastname\n' >> .git/info/private-words
+```
+
+The hooks need `python3` (installed with the macOS developer tools, like Git).
+`git commit --no-verify` or `git push --no-verify` skips them. They check the commits being
+sent, including a merge with an old clone made before a history rewrite.
 
 ## Configuration (`config.json`)
 
@@ -335,6 +367,7 @@ bench/questions_test.json  test questions (never used to choose anything)
 bench/config.ollama.json   configuration for measuring a model served by Ollama
 bench/results/       results; exploratory/ holds the runs made before the protocol
 tools/fake_llm.py    fake OpenAI-compatible server for tests
+.githooks/           pre-commit and pre-push checks against publishing personal data
 tests/               offline tests (unittest)
 config.example.json
 .env.example         template for .env (keys)
