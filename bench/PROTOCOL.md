@@ -13,6 +13,18 @@ of this project, and compare Olala 1.0 mini with other local models on the same 
 - **Code**: tools, instructions and orchestrator "v4", as of the commit that adds this file
   (default system prompt, tool descriptions, `max_turns` 6, `max_tool_calls` 10,
   `max_result_chars` 8000), and the checks of `bench/run.py` at that commit.
+  Added on 2026-11-26: commits `369c1ea`, `926810e` and `8f1b34c` changed the code
+  afterwards (a docstring; the benchmark also writes `meta.json` at the start of a run;
+  arguments passed by name; one function for the key of the model server; dead paths of
+  `bench/run.py` removed) without changing what is frozen. Checked on 2026-11-26 by
+  listing the tools of the MCP server built from each commit: the tool definitions, server
+  instructions, default system prompt and default limits of the orchestrator are identical,
+  byte for byte, at `02f564d` (the commit that adds this file), at `8364f17` (recorded as
+  `bff70a7` by the phase 2 runs of the Ollama models) and at `8f1b34c`; the commits between
+  `02f564d` and `8364f17`, phase 2 run of Olala included, change no code. The test
+  questions and `bench/config.ollama.json` are unchanged, and the summaries of the four
+  phase 2 runs, rebuilt from their raw runs with the checks of `8f1b34c`, are identical.
+  Models measured with this code remain comparable with the phase 2 results.
 - **Development set**, `bench/questions_dev.json` (32 questions): the questions of the
   exploratory runs, with the checks of this version. It may be used to choose settings. A
   score on it is not a measure of reliability.
