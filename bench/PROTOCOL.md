@@ -139,6 +139,38 @@ Each runs through a model created with `PARAMETER num_ctx 8192` (`qwen3-8b-ctx8k
 models are 4-bit quantizations (Q4_K_M where displayed), more compressed than Olala's `q5e6`
 (5.76 bits per weight according to its MLX model card).
 
+### Added on 2026-11-26, before their runs: more models on the test set
+
+The comparison is extended to more local models with tool calling, under the conditions of
+phase 2: the same test set, code, MCP server, instructions and limits (see "What is
+frozen"), Ollama 0.40.6, a model created with `PARAMETER num_ctx 8192`, Ollama's default
+sampling and thinking, 3 runs per question, no tuning. These models were chosen after the
+phase 2 results of Olala, qwen3:8b, ministral-3:8b and mistral:7b were known. This list is
+written before any of their runs, and every run is published, whatever its result.
+
+`qwen3:4b` and `qwen3:1.7b`, planned above and not run yet, are run first, with the tags
+recorded above. Then, models as installed (`ollama list`, `ollama show`):
+
+| Tag | ID | Size | Notes |
+|---|---|---|---|
+| `qwen3.5:4b` | `7f3251fa6878` | 4.0 GB | 4.5B parameters, NVFP4, capabilities completion, vision, thinking and tools; default temperature 1, top_k 20, top_p 0.95, presence_penalty 1.5 |
+| `gemma4:latest` | `c6eb396dbd59` | 9.6 GB | 8.0B parameters, Q4_K_M, capabilities completion, vision, tools and thinking; default temperature 1, top_k 64, top_p 0.95 |
+| `gpt-oss:latest` | `17052f91a42e` | 13 GB | 20.9B parameters (gpt-oss 20b), MXFP4, capabilities completion, tools and thinking; default temperature 1 |
+| `llama3.2:latest` | `a80c4f17acd5` | 2.0 GB | 3.2B parameters (Llama 3.2 3B), Q4_K_M, capabilities completion and tools |
+
+Each runs through a model created with `PARAMETER num_ctx 8192` (`qwen3.5-4b-ctx8k`,
+`gemma4-ctx8k`, `gpt-oss-ctx8k`, `llama3.2-ctx8k`).
+
+To download, then run: `granite4:tiny-h` (IBM Granite 4.0 H Tiny, a mixture-of-experts
+model, like Olala), `ministral-3:3b` and `ministral-3:14b` (Mistral AI, with
+`ministral-3:8b` as European points of comparison). Their tags were not checked when this
+list was written: each is confirmed with `ollama pull` before its run, a missing model is
+replaced by the closest available version, and its tag, ID, size and notes are added to the
+table above before the run.
+
+`mistral:7b` is not run again: it called no tool in any of its 120 runs (`20261125-134016`).
+The memory used by each model during its run is read with `ollama ps` and reported by hand.
+
 ## Conditions
 
 Same Mac (MacBook Pro Mac14,5, Apple M2 Max, 12 CPU cores, 30 GPU cores, 32 GB); one model
