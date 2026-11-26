@@ -38,7 +38,6 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import os
 import platform
 import re
 import statistics
@@ -53,8 +52,8 @@ from typing import Any
 import anyio
 
 from fr_open_data import __version__, envfile
-from fr_open_data.orchestrator import (Answer, ToolCall, check_config, from_config, load_config, remote_llm_host,
-                                       tool_arguments, warn_if_remote)
+from fr_open_data.orchestrator import (Answer, ToolCall, api_key, check_config, from_config, load_config,
+                                       remote_llm_host, tool_arguments, warn_if_remote)
 
 HERE = Path(__file__).resolve().parent
 _SEPARATOR = re.compile(r"(?<=\d)[\s   .,'](?=\d{3}(?!\d))")  # thousands separators
@@ -89,10 +88,13 @@ def value_at(data: Any, path: str) -> Any:
     return data
 
 
+def _code(value: Any) -> str:
+    return re.sub(r"[\s.]+", "", str(value)).upper()
+
+
 def _same(actual: Any, expected: Any) -> bool:
     """Compare codes and years, ignoring case, spaces and dots ("62.02A" = "6202a")."""
-    norm = lambda v: re.sub(r"[\s.]+", "", str(v)).upper()  # noqa: E731
-    return norm(actual) == norm(expected)
+    return _code(actual) == _code(expected)
 
 
 _KEY_SEP = re.compile(r"\s*,?\s*")
@@ -124,14 +126,19 @@ def leading_fields(text: str) -> dict[str, Any]:
         out[key] = value
 
 
-def _result(call: ToolCall) -> dict[str, Any]:
+def _parse_result(text: Any) -> dict[str, Any]:
+    """The JSON object of a tool result, or its complete leading fields when it was cut short."""
     try:
-        d = json.loads(call.result)
+        d = json.loads(text)
     except (json.JSONDecodeError, TypeError):
         # Found in the first Ollama run: a search with limit=25 exceeded max_result_chars; the
         # model read total_results at the top of the cut text, the check could not parse it.
-        return leading_fields(call.result) if isinstance(call.result, str) else {}
+        return leading_fields(text) if isinstance(text, str) else {}
     return d if isinstance(d, dict) else {}
+
+
+def _result(call: ToolCall) -> dict[str, Any]:
+    return _parse_result(call.result)
 
 
 def tools_of(spec: dict[str, Any]) -> list[str]:
@@ -164,7 +171,7 @@ def cites_source(answer: str, results: list[str]) -> bool | None:
     None when no successful result has a source this check knows."""
     words = []
     for text in results:
-        source = _result(ToolCall("", "", {}, False, None, "", result=text)).get("source")
+        source = _parse_result(text).get("source")
         for key, kws in SOURCE_WORDS.items():
             if source and key in _plain(source):
                 words += kws
@@ -273,16 +280,17 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
     ok = sum(r["success"] for r in records)
     completion = [r["completion_tokens"] for r in records if r["completion_tokens"] is not None]
     llm_s = sum(r["llm_seconds"] for r in records if r["completion_tokens"] is not None)
+    params = json.dumps(meta["llm"].get("params") or {}, ensure_ascii=False)
+    qfiles = ", ".join(f"`{Path(f).name}`" for f in _question_files(meta.get("questions_file"))) or "file not recorded"
     lines = [
         f"# Benchmark {meta['started']}",
         "",
         f"- Label: {meta.get('label') or '(none)'}",
-        f"- Model: `{meta['llm']['model']}` at `{meta['llm']['base_url']}`, params `{json.dumps(meta['llm'].get('params') or {}, ensure_ascii=False)}`",
+        f"- Model: `{meta['llm']['model']}` at `{meta['llm']['base_url']}`, params `{params}`",
         f"- Machine: {machine_text(meta['machine'])}",
         *([f"- Model server: {meta['server_version']}"] if meta.get("server_version") else []),
         f"- Code: french-open-data-mcp {meta['version']}, commit `{meta.get('commit') or '?'}`",
-        f"- Questions: {', '.join(f'`{Path(f).name}`' for f in _question_files(meta.get('questions_file')) or ['questions.json'])}, "
-        f"{len({r['id'] for r in records})} questions",
+        f"- Questions: {qfiles}, {len({r['id'] for r in records})} questions",
         f"- Runs: {meta['runs']} per question, {len(records)} in total",
         *([f"- Checks re-applied on {meta['rescored']['date']} with `{meta['rescored']['questions_file']}` "
            f"(commit `{meta['rescored']['commit'] or '?'}`) to {meta['rescored']['runs']} stored runs; "
@@ -372,16 +380,12 @@ def _calls_text(calls: list[dict[str, Any]]) -> str:
     return _cell(" > ".join(parts) or "none", 300)
 
 
-def rescore(record: dict[str, Any], q: dict[str, Any]) -> bool:
-    """Re-apply the checks of q to a stored run. False when the run has no stored tool results."""
-    calls = record["tool_calls"]
-    if any("result" not in c for c in calls):
-        return False
+def rescore(record: dict[str, Any], q: dict[str, Any]) -> None:
+    """Re-apply the checks of q to a stored run."""
     a = Answer(text=record["answer"], error=record.get("error"), tool_calls=[
         ToolCall("", c["tool"], c["arguments"], c["error"], None, "", repeated=c["repeated"],
-                 seconds=c.get("seconds") or 0.0, result=c["result"]) for c in calls])
+                 seconds=c.get("seconds") or 0.0, result=c["result"]) for c in record["tool_calls"]])
     record.update(evaluate(q, a))
-    return True
 
 
 def load_questions(paths: list[str]) -> list[dict[str, Any]]:
@@ -400,6 +404,14 @@ def _question_files(value: Any) -> list[str]:
     return [value] if isinstance(value, str) else list(value or [])
 
 
+def _locate(path: str) -> str:
+    """A questions file as given, relative to the repository (as in meta.json), or by name in bench/."""
+    for candidate in (Path(path), HERE.parent / path, HERE / Path(path).name):
+        if candidate.exists():
+            return str(candidate)
+    return path
+
+
 def resummarize(path: str, questions_file: str | list[str] | None) -> None:
     """Rebuild summary.md from runs.jsonl and meta.json, re-applying the checks of the questions file."""
     root = Path(path)
@@ -410,24 +422,16 @@ def resummarize(path: str, questions_file: str | list[str] | None) -> None:
         root = dirs[-1]
     meta = json.loads((root / "meta.json").read_text(encoding="utf-8"))
     records = [json.loads(line) for line in (root / "runs.jsonl").read_text(encoding="utf-8").splitlines() if line]
-    qfiles = _question_files(questions_file or meta.get("questions_file")) or [str(HERE / "questions.json")]
-    # results copied from another machine, or archived with their questions: look next to the
-    # results folder, then in bench/
-    def _find(f: str) -> str:
-        for candidate in (Path(f), root.parent / Path(f).name, HERE / Path(f).name):
-            if candidate.exists():
-                return str(candidate)
-        return f
-    qfiles = [_find(f) for f in qfiles]
+    qfiles = [_locate(f) for f in _question_files(questions_file or meta.get("questions_file"))]
+    if not qfiles:
+        sys.exit(f"{root / 'meta.json'} records no questions file: give it with --questions.")
     qfile = ", ".join(Path(f).name for f in qfiles)
     questions = {q["id"]: q for q in load_questions(qfiles)}
     rescored = 0
     for r in records:
         if r["id"] in questions:
-            if rescore(r, questions[r["id"]]):
-                rescored += 1
-            else:  # older results without tool results: only the unneeded calls can be recomputed
-                r["calls_extra"] = unneeded_calls(questions[r["id"]], [c["tool"] for c in r["tool_calls"]])
+            rescore(r, questions[r["id"]])
+            rescored += 1
     if rescored:
         meta = {**meta, "rescored": {"date": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
                                      "questions_file": Path(qfile).name, "runs": rescored,
@@ -538,7 +542,7 @@ def machine_text(m: dict[str, Any]) -> str:
 def server_health(llm_cfg: dict[str, Any]) -> Any:
     """GET /health on the model server (mlx-engine reports its context length there)."""
     url = re.sub(r"/v1/?$", "", llm_cfg["base_url"].rstrip("/")) + "/health"
-    key = os.environ.get(llm_cfg["api_key_env"]) if llm_cfg.get("api_key_env") else None
+    key = api_key(llm_cfg)
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"} if key else {})
     try:
         with urllib.request.urlopen(req, timeout=10) as r:

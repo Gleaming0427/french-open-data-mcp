@@ -123,6 +123,12 @@ def source_of(text: str) -> str | None:
     return d.get("source") if isinstance(d, dict) else None
 
 
+def api_key(llm_cfg: dict[str, Any]) -> str | None:
+    """Key of the model server: the environment variable named by llm.api_key_env, if any."""
+    name = llm_cfg.get("api_key_env")
+    return os.environ.get(name) if name else None
+
+
 class Orchestrator:
     def __init__(self, llm_config: dict[str, Any], clients: dict[str, Client], *,
                  tool_filters: dict[str, list[str]] | None = None, system_prompt: str = DEFAULT_SYSTEM_PROMPT,
@@ -174,8 +180,8 @@ class Orchestrator:
             tool_choice = self.cfg.get("tool_choice", "auto")
             if tool_choice:
                 payload["tool_choice"] = tool_choice
-        key = os.environ.get(self.cfg["api_key_env"]) if self.cfg.get("api_key_env") else None
-        return llm.chat(self.cfg["base_url"], payload, key, self.cfg.get("timeout_s", 300), self.cfg.get("stream", True))
+        return llm.chat(self.cfg["base_url"], payload, api_key(self.cfg), self.cfg.get("timeout_s", 300),
+                        self.cfg.get("stream", True))
 
     async def _execute(self, name: str, arguments: str) -> tuple[str, ToolCall]:
         if name not in self.routes:
@@ -221,17 +227,16 @@ class Orchestrator:
                 if reply.truncated:
                     out.text += "\n[answer truncated: token limit reached]"
                 return out
+            parsed = [tool_arguments(c["arguments"]) for c in reply.tool_calls]
             calls = []
-            for i, c in enumerate(reply.tool_calls):
+            for i, (c, args) in enumerate(zip(reply.tool_calls, parsed)):
                 c["id"] = c.get("id") or f"call_{turn}_{i}"
                 # Arguments sent back must be a JSON object: the Olala MLX server (mlx-engine)
                 # rejects the whole request otherwise (HTTP 400). The tool result reports the error.
-                args = tool_arguments(c["arguments"])
                 calls.append({"id": c["id"], "type": "function", "function": {
                     "name": c["name"], "arguments": json.dumps({} if args is None else args, ensure_ascii=False)}})
             messages.append({"role": "assistant", "content": llm.strip_reasoning(reply.content), "tool_calls": calls})
-            for c in reply.tool_calls:
-                args = tool_arguments(c["arguments"])
+            for c, args in zip(reply.tool_calls, parsed):
                 key = (c["name"], json.dumps(args, sort_keys=True)) if args is not None else None
                 if key in done:
                     # Small models sometimes repeat a call (a DVF query takes several seconds):
@@ -308,8 +313,9 @@ def sources(a: Answer) -> list[str]:
 
 def show(a: Answer) -> None:
     print(a.text)
-    if sources(a):
-        print("\nSources (from the tool results): " + "; ".join(sources(a)))
+    found = sources(a)
+    if found:
+        print("\nSources (from the tool results): " + "; ".join(found))
     if a.tool_calls:
         print("\n--- tools called ---")
         for t in a.tool_calls:
@@ -321,7 +327,7 @@ def show(a: Answer) -> None:
 async def _main(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
     warn_if_remote(cfg["llm"])
     key_env = cfg["llm"].get("api_key_env")
-    if key_env and not os.environ.get(key_env):
+    if key_env and not api_key(cfg["llm"]):
         print(f"warning: {key_env} is not set (environment or {args.env_file}): requests are sent without a key",
               file=sys.stderr)
     async with from_config(cfg) as orch:
@@ -334,7 +340,7 @@ async def _main(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
                 c["base_url"],
                 {"model": c["model"], "max_tokens": 512, **(c.get("params") or {}),
                  "messages": [{"role": "user", "content": "Reply only: OK"}]},
-                os.environ.get(c.get("api_key_env") or "", None), 120, c.get("stream", True)))
+                api_key(c), 120, c.get("stream", True)))
             print("Model:", f"FAILED {reply.error}" if reply.error else repr(llm.strip_reasoning(reply.content)))
             return
         if args.question:

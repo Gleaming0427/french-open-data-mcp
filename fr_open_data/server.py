@@ -34,10 +34,10 @@ def _json(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
 
-def _run(fn: Callable[..., Any], *args: Any) -> str:
+def _run(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> str:
     """Turn expected failures into ToolError, whose message reaches the model."""
     try:
-        return _json(fn(*args))
+        return _json(fn(*args, **kwargs))
     except (ValueError, SourceError) as e:
         raise ToolError(str(e)) from e
 
@@ -66,8 +66,9 @@ def search_companies(
     to answer "how many", use count_companies. Location filters match companies with at least
     one establishment there, not only head offices.
     """
-    return _run(companies.search, text, postcode, department, naf_code, include_closed, limit,
-                municipality_code, activity_section, municipality)
+    return _run(companies.search, text, municipality=municipality, municipality_code=municipality_code,
+                postcode=postcode, department=department, naf_code=naf_code, activity_section=activity_section,
+                include_closed=include_closed, limit=limit)
 
 
 def count_companies(
@@ -85,7 +86,8 @@ def count_companies(
 
     Returns total_results, the number of matching companies, and the filters applied.
     """
-    return _run(companies.count, municipality, naf_code, activity_section, department, postcode, include_closed)
+    return _run(companies.count, municipality=municipality, naf_code=naf_code, activity_section=activity_section,
+                department=department, postcode=postcode, include_closed=include_closed)
 
 
 def company_profile(
@@ -100,7 +102,7 @@ def find_municipality(
     postcode: Annotated[str | None, Field(description="Postcode to disambiguate (optional).")] = None,
 ) -> str:
     """Find the INSEE code of a French municipality. property_prices and search_companies also accept the name."""
-    return _run(municipalities.find, name, postcode)
+    return _run(municipalities.find, name, postcode=postcode)
 
 
 def property_prices(
@@ -120,7 +122,7 @@ def property_prices(
     arrondissement: give the arrondissement, e.g. "Marseille 8e arrondissement".
     Answer only with figures present in the result; check that its municipality is the one asked.
     """
-    return _run(dvf.property_prices, insee_code, period, municipality)
+    return _run(dvf.property_prices, municipality=municipality, period=period, insee_code=insee_code)
 
 
 def search_legifrance(
@@ -130,7 +132,7 @@ def search_legifrance(
     limit: Annotated[int, Field(ge=1, le=20, description="Number of results.")] = 5,
 ) -> str:
     """Search Légifrance (French codes, laws, case law...). Returns titles and article ids."""
-    return _run(legifrance.search, text, collection, limit)
+    return _run(legifrance.search, text, collection=collection, limit=limit)
 
 
 def read_legifrance_article(

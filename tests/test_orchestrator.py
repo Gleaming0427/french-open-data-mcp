@@ -4,6 +4,7 @@ import json
 import os
 import threading
 import unittest
+from unittest import mock
 
 from mcp import Client
 from mcp.server.mcpserver import MCPServer
@@ -184,6 +185,22 @@ class TestOrchestrator(FakeLlm, unittest.IsolatedAsyncioTestCase):
             r = await c.call_tool("property_prices", {"insee_code": "75056"})
         self.assertTrue(r.is_error)
         self.assertIn("arrondissement", r.content[0].text)
+
+    async def test_real_server_passes_each_argument_to_its_parameter(self):
+        with mock.patch("fr_open_data.companies.request_json",
+                        return_value={"results": [], "total_results": 3}) as api:
+            async with Client(build_server(with_legifrance=False)) as c:
+                await c.call_tool("search_companies", {"text": "boulangerie", "postcode": "21000", "department": "21",
+                                                       "naf_code": "10.71C", "include_closed": True, "limit": 7})
+                searched = api.call_args[0][1]
+                r = await c.call_tool("count_companies", {"department": "21", "activity_section": "i"})
+                counted = api.call_args[0][1]
+        self.assertEqual((searched["q"], searched["code_postal"], searched["departement"],
+                          searched["activite_principale"], searched["etat_administratif"], searched["per_page"]),
+                         ("boulangerie", "21000", "21", "10.71C", None, 7))
+        self.assertEqual((counted["departement"], counted["section_activite_principale"],
+                          counted["etat_administratif"], counted["per_page"]), ("21", "I", "A", 1))
+        self.assertIn("3 companies match", r.content[0].text)
 
 
 if __name__ == "__main__":

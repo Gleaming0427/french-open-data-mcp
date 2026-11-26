@@ -131,14 +131,15 @@ def profile(r: dict[str, Any]) -> dict[str, Any]:
 
 def search(
     text: str = "",
+    *,
+    municipality: str | None = None,
+    municipality_code: str | None = None,
     postcode: str | None = None,
     department: str | None = None,
     naf_code: str | None = None,
+    activity_section: str | None = None,
     include_closed: bool = False,
     limit: int = 5,
-    municipality_code: str | None = None,
-    activity_section: str | None = None,
-    municipality: str | None = None,
 ) -> dict[str, Any]:
     """Search companies. postcode, municipality (name), municipality_code and department filter on
     any establishment; naf_code and activity_section apply to the main activity of the company."""
@@ -194,14 +195,23 @@ def search(
     return out
 
 
-def count(municipality: str | None = None, naf_code: str | None = None, activity_section: str | None = None,
-          department: str | None = None, postcode: str | None = None, include_closed: bool = False,
-          municipality_code: str | None = None) -> dict[str, Any]:
+def count(
+    *,
+    municipality: str | None = None,
+    municipality_code: str | None = None,
+    postcode: str | None = None,
+    department: str | None = None,
+    naf_code: str | None = None,
+    activity_section: str | None = None,
+    include_closed: bool = False,
+) -> dict[str, Any]:
     """Number of companies matching filters, without a list (a small model confused the
     number of companies listed by search with the total)."""
-    if not (municipality or naf_code or activity_section or department or postcode or municipality_code):
+    if not (municipality or municipality_code or postcode or department or naf_code or activity_section):
         raise ValueError("Give at least one filter.")
-    r = search("", postcode, department, naf_code, include_closed, 1, municipality_code, activity_section, municipality)
+    r = search(municipality=municipality, municipality_code=municipality_code, postcode=postcode,
+               department=department, naf_code=naf_code, activity_section=activity_section,
+               include_closed=include_closed, limit=1)
     out = {"source": r["source"], "filters": r["filters"], "total_results": r["total_results"],
            "answer": f"{r['total_results']} companies match these filters."}
     if r.get("notes"):
