@@ -16,7 +16,7 @@ model card sampling.
 | `20261124-121208` | Olala | tools v1 (`8422176`) | `questions.json` | 12/24 |
 | `20261124-132440` | Olala | tools v2 (`f31ebe4`) | `questions.json` | 21/24 |
 | `20261124-143946` | Olala | tools v2 (`f31ebe4`) | `questions.json` | 20/24 |
-| `20261124-150321` | Olala | interrupted run: 14 of 24 runs, no summary | `questions.json` | 11/14 |
+| `20261124-150321` | Olala | interrupted run: 14 of 24 runs, no summary (3) | `questions.json` | 11/14 |
 | `20261124-150625` | Olala | tools v3 (`729b340`) | `questions.json` | 23/24 (the tools were adjusted on these questions) |
 | `20261124-152301` | Olala | tools v3 (`729b340`) | `questions_holdout.json` | 18/24 as run, 20/24 re-checked (1) |
 | `20261124-160832` | Olala | tools v3 (`1bdba5b`) | `questions_holdout2.json` | 37/48 |
@@ -34,6 +34,11 @@ same 72 runs, Olala gave 57/72 re-checked (55 as run), with a median of 13.2 s p
 against 19.6 s for qwen3:8b; qwen3:8b named the source of the data in 63 of 63 answers,
 Olala in 34 of 60. The two engines differ (mlx-engine and Ollama), as do the reasoning
 settings (Olala low, qwen3 Ollama's default).
+
+(3) This run had no summary: its only file, the raw runs (`runs.jsonl`), was removed from the
+repository on 2026-11-25 because it contained personal data (see the README, "What is never
+committed"), so its folder no longer exists. The score 11/14 was read from those raw runs
+before their removal.
 
 ## What these runs showed
 
