@@ -433,6 +433,7 @@ tools/fake_llm.py    fake OpenAI-compatible server for tests
 tests/               offline tests (unittest)
 config.example.json
 .env.example         template for .env (keys)
+LICENSE              Apache License 2.0
 ```
 
 ## Sources (consulted 2026-11-23/24)
@@ -450,3 +451,9 @@ config.example.json
 - Découpage administratif API specification (`boost` parameter): https://github.com/datagouv/api-geo (`definition.yml`)
 - Ollama, tool calling and OpenAI compatibility: https://docs.ollama.com/capabilities/tool-calling and https://docs.ollama.com/api/openai-compatibility
 - MCP Python SDK (v2): https://pypi.org/project/mcp/
+
+## Licence
+
+The code of this repository is under the Apache License 2.0 (see [`LICENSE`](LICENSE)). The
+data returned by the public APIs, including the figures quoted in `bench/results/`, keep the
+terms of their sources (see Sources above), and each model keeps its own licence.
