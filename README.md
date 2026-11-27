@@ -298,7 +298,13 @@ question, and the failures with the calls made.
   models with the same server and runner: the five llama.cpp models on Ollama 0.40.18.
   qwen3:4b thinks at length (268,705 output tokens for its 120 runs).
 - **mistral:7b called no tool** in any of its 120 runs. Its 14 successes are all in the
-  category where DVF has no data, where the criterion is the absence of a figure.
+  category where DVF has no data, where the criterion is the absence of a figure. This is
+  a limit of the model, not a parsing error: checked on 2026-11-27 with Ollama 0.40.18, 3
+  requests per case, it calls a tool when it is given only one, in English or in French
+  (`find_municipality` alone included). Given the 5 tools of this server, it writes the call
+  as plain text instead of its tool-call format, and with the system prompt as well it
+  answers from memory, often wrongly (51100 or 02100 as the INSEE code of Reims, whose
+  code is 51454).
 - **llama3.2:3b** fails mostly on company counts (by NAF code 1/15, by activity section
   4/15) and half-years (4/15).
 - **ministral-3:8b** called no tool in 25 runs; most of its failures are DVF questions
