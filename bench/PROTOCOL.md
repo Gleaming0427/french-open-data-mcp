@@ -73,6 +73,10 @@ pooled.
   and `20261126-085827` (1 run, successful). Until then, `bench/run.py` wrote `meta.json`
   only at the end of a run; it now also writes it at the start, so that an interrupted run
   keeps its label (its `meta.json` then has no `finished` time).
+  Added on 2026-11-27: in the failures listed by `summary.md`, the SIREN and SIRET numbers
+  that the question does not contain are replaced by `[SIREN]`, because a company returned
+  by a tool may be a sole proprietor. The summary of `20261127-085127` quoted two such SIRENs;
+  they were removed. This changes neither the measurements nor the checks.
 
 ## Phase 1: settings of Olala (development set only)
 

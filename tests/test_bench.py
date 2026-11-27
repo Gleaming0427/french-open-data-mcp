@@ -141,6 +141,21 @@ class TestChecks(unittest.TestCase):
         self.assertIn("property_prices(insee_code=75056) ERROR", text)
         self.assertIn("Je ne sais pas.", text)
 
+    def test_failures_hide_sirens_not_in_the_question(self):
+        self.assertEqual(run.mask_sirens("SIREN 552120222, also 910000001 and 91000000100017.",
+                                         "Activité du SIREN 552120222 ?"),
+                         "SIREN 552120222, also [SIREN] and [SIREN].")
+        self.assertEqual(run.mask_sirens("2 580 € in 21054, 2025", "?"), "2 580 € in 21054, 2025")
+        q = {"id": "siren", "question": "Activité du SIREN 552120222 ?", "calls": [], "answer": {"contains": ["x"]}}
+        a = Answer(text="Not found; the tool returned 910000001.",
+                   tool_calls=[call("search_companies", {"text": "910000002"}, result="{}")])
+        meta = {"started": "x", "version": "0.1.0", "runs": 1, "llm": {"model": "m", "base_url": "u"},
+                "machine": {"platform": "test"}}
+        text = run.summarize([run.run_record(q, 1, a, 1.0)], meta)
+        self.assertNotIn("910000001", text)
+        self.assertNotIn("910000002", text)
+        self.assertIn("search_companies(text=[SIREN])", text)
+
     def test_resummarize_reapplies_checks(self):
         q = {"id": "name", "question": "?", "calls": [], "answer": {"contains": ["TOTALENERGIES SE (TOTALENERGIE SE)"]}}
         record = run.run_record(q, 1, Answer(text="TOTALENERGIES SE", tool_calls=[call("company_profile", {}, result="{}")]), 1.0)

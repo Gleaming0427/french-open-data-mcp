@@ -340,7 +340,10 @@ The repository is public. These files stay on your machine (`.gitignore`):
 - `runs.jsonl` in `bench/results/`: the raw runs keep the full tool results, which include
   personal data from public registers (names of company directors, names and addresses of
   sole proprietors). The raw runs were removed from the history of every branch on
-  2026-11-25. `summary.md` and `meta.json` are published.
+  2026-11-25. `summary.md` and `meta.json` are published. In the failures that `summary.md`
+  lists, the SIREN and SIRET numbers that the question does not contain are replaced by
+  `[SIREN]`: a company returned by a tool may be a sole proprietor, whose SIREN identifies a
+  natural person.
 
 Two Git hooks in `.githooks/` refuse a commit or a push that would publish personal data: a
 `runs.jsonl` file, an absolute path to a home folder (such as `/Users/<name>/...`, which

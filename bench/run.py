@@ -351,8 +351,9 @@ def summarize(records: list[dict[str, Any]], meta: dict[str, Any]) -> str:
                 reasons.append(f"answer ({r['answer_detail']})")
             if r["api_error"]:
                 reasons.append("public API error during the run")
-            lines.append(f"| {r['id']} | {r['run']} | {'; '.join(reasons)} | {_calls_text(r['tool_calls'])} "
-                         f"| {_cell(r['answer'], 160)} |")
+            q = r["question"]
+            lines.append(f"| {r['id']} | {r['run']} | {mask_sirens('; '.join(reasons), q)} "
+                         f"| {_calls_text(r['tool_calls'], q)} | {_cell(mask_sirens(r['answer'], q), 160)} |")
     lines += ["", "Memory used by the model server: not measured by this script (read it in Activity Monitor).", ""]
     return "\n".join(lines)
 
@@ -371,13 +372,23 @@ def _cell(text: Any, limit: int) -> str:
     return t if len(t) <= limit else t[:limit] + "…"
 
 
-def _calls_text(calls: list[dict[str, Any]]) -> str:
+_SIREN_OR_SIRET = re.compile(r"(?<!\d)\d{9}(?:\d{5})?(?!\d)")
+
+
+def mask_sirens(text: str, question: str) -> str:
+    """Hide the SIREN and SIRET numbers that the question does not contain. A company returned
+    by a tool may be a sole proprietor, whose SIREN identifies a natural person."""
+    asked = set(re.findall(r"(?<!\d)\d{9}(?!\d)", question or ""))
+    return _SIREN_OR_SIRET.sub(lambda m: m[0] if m[0][:9] in asked else "[SIREN]", text or "")
+
+
+def _calls_text(calls: list[dict[str, Any]], question: str = "") -> str:
     parts = []
     for c in calls:
         args = c["arguments"] if isinstance(c["arguments"], dict) else {}
         shown = ", ".join(f"{k}={v}" for k, v in args.items())
         parts.append(f"{c['tool']}({shown})" + (" ERROR" if c["error"] else "") + (" repeated" if c["repeated"] else ""))
-    return _cell(" > ".join(parts) or "none", 300)
+    return _cell(mask_sirens(" > ".join(parts) or "none", question), 300)
 
 
 def rescore(record: dict[str, Any], q: dict[str, Any]) -> None:
