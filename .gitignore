@@ -13,3 +13,5 @@ Modelfile*
 # history of every branch on 2026-11-25; summary.md and meta.json are published. See the README,
 # "What is never committed".
 runs.jsonl
+# Log of `ollama ps` written during the benchmark runs (not published, see bench/PROTOCOL.md)
+/ollama-ps.log

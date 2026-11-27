@@ -275,25 +275,47 @@ same Mac (M2 Max, 32 GB) with the same MCP server, instructions and limits. No r
 by a public API error. Each folder's `summary.md` gives the results by category and by
 question, and the failures with the calls made.
 
-| Model | Served by | Success (95% interval) | Answers naming the source | Results |
-|---|---|---|---|---|
-| qwen3:8b | Ollama 0.40.6 | 120/120 (97%-100%) | 105/105 | [`20261125-134910`](bench/results/20261125-134910/summary.md) |
-| Olala 1.0 mini, `q5e6`, reasoning low | mlx-engine (OVHcloud fork) `58083ca` | 113/120 (88%-97%) | 68/108 | [`20261125-123052`](bench/results/20261125-123052/summary.md) |
-| ministral-3:8b | Ollama 0.40.6 | 84/120 (61%-77%) | 78/91 | [`20261125-132556`](bench/results/20261125-132556/summary.md) |
-| mistral:7b | Ollama 0.40.6 | 14/120 (7%-19%) | - | [`20261125-134016`](bench/results/20261125-134016/summary.md) |
+| Model | Served by | Size | Success (95% interval) | Answers naming the source | Median time per run | Results |
+|---|---|---|---|---|---|---|
+| gpt-oss:20b | Ollama 0.40.18 | 13 GB | 120/120 (97%-100%) | 97/105 | 7.1 s | [`20261127-095642`](bench/results/20261127-095642/summary.md) |
+| qwen3:8b | Ollama 0.40.6 | 5.2 GB | 120/120 (97%-100%) | 105/105 | 24.5 s | [`20261125-134910`](bench/results/20261125-134910/summary.md) |
+| qwen3:4b | Ollama 0.40.18 | 2.5 GB | 118/120 (94%-100%) | 104/109 | 45.5 s | [`20261127-070506`](bench/results/20261127-070506/summary.md) |
+| gemma4 (8B) | Ollama 0.40.18 | 9.6 GB | 117/120 (93%-99%) | 102/102 | 14.3 s | [`20261127-092809`](bench/results/20261127-092809/summary.md) |
+| qwen3.5:4b | Ollama 0.40.18, MLX runner | 4.0 GB | 114/120 (90%-98%) | 28/111 | 8.0 s | [`20261127-091013`](bench/results/20261127-091013/summary.md) |
+| Olala 1.0 mini, `q5e6`, reasoning low | mlx-engine (OVHcloud fork) `58083ca` | 4.9 GB | 113/120 (88%-97%) | 68/108 | 15.5 s | [`20261125-123052`](bench/results/20261125-123052/summary.md) |
+| qwen3:1.7b | Ollama 0.40.18 | 1.4 GB | 106/120 (81%-93%) | 103/103 | 8.1 s | [`20261127-085127`](bench/results/20261127-085127/summary.md) |
+| ministral-3:8b | Ollama 0.40.6 | 6.0 GB | 84/120 (61%-77%) | 78/91 | 6.2 s | [`20261125-132556`](bench/results/20261125-132556/summary.md) |
+| llama3.2:3b | Ollama 0.40.18 | 2.0 GB | 68/120 (48%-65%) | 48/85 | 2.0 s | [`20261127-101044`](bench/results/20261127-101044/summary.md) |
+| mistral:7b | Ollama 0.40.6 | 4.4 GB | 14/120 (7%-19%) | - | 2.4 s | [`20261125-134016`](bench/results/20261125-134016/summary.md) |
 
+- **The top is saturated**: four models succeed in 117 runs or more. This test set separates
+  the small models, not the strongest ones.
+- **Two Ollama versions**: qwen3:8b, ministral-3:8b and mistral:7b ran on Ollama 0.40.6, the
+  other Ollama models on 0.40.18 (Ollama was updated between the runs, see
+  `bench/PROTOCOL.md`). Ollama ran qwen3.5:4b with its MLX runner, the others with its
+  llama.cpp runner.
+- **Times** are medians per run, prompt processing and thinking included. They compare only
+  models with the same server and runner: the five llama.cpp models on Ollama 0.40.18.
+  qwen3:4b thinks at length (268,705 output tokens for its 120 runs).
 - **mistral:7b called no tool** in any of its 120 runs. Its 14 successes are all in the
   category where DVF has no data, where the criterion is the absence of a figure.
+- **llama3.2:3b** fails mostly on company counts (by NAF code 1/15, by activity section
+  4/15) and half-years (4/15).
 - **ministral-3:8b** called no tool in 25 runs; most of its failures are DVF questions
   (town 6/15, arrondissement 3/15, half-year 5/15).
 - **Olala** failed 7 runs: company counts by NAF code (11/15) and by activity section
   (13/15), and one arrondissement (14/15).
-- **Not run**: qwen3:4b and qwen3:1.7b, planned by the protocol.
+- **qwen3.5:4b** had one run stopped by an Ollama error (HTTP 500 while reading a tool
+  call), and rarely named the source of the data (28/111).
+- **Not run**: granite4:tiny-h, ministral-3:3b and ministral-3:14b, registered in the
+  protocol.
+- **Memory is not reported**: the figures of `ollama ps` did not match the models (3.3 GB for
+  gemma4, whose files take 9.6 GB). "Size" is the size of the model files.
 - **To state with these figures**: the runs of one question are not independent, so the
   real uncertainty is larger than the intervals; the Ollama models are 4-bit quantizations
   run with Ollama's default sampling and thinking; the tools were developed while testing
-  Olala; speeds are not compared, since the engines differ. "Answers naming the source"
-  counts the runs where a tool returned data (keyword check, not part of the criterion).
+  Olala. "Answers naming the source" counts the runs where a tool returned data (keyword
+  check, not part of the criterion).
 
 **What the earlier runs showed.** Their folders were removed on 2026-11-26.
 

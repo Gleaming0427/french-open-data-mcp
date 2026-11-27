@@ -171,6 +171,19 @@ table above before the run.
 `mistral:7b` is not run again: it called no tool in any of its 120 runs (`20261125-134016`).
 The memory used by each model during its run is read with `ollama ps` and reported by hand.
 
+Added on 2026-11-27, after the runs: Ollama was updated to 0.40.18 before the six runs of
+2026-11-27 (folders `20261127-*`). The IDs of the models listed above are unchanged; the
+models created with `num_ctx 8192` have the IDs `5f093cd67d4a` (`qwen3-4b-ctx8k`),
+`60351f6b98ad` (`qwen3-1.7b-ctx8k`), `74622c837125` (`qwen3.5-4b-ctx8k`), `9e2517008051`
+(`gemma4-ctx8k`), `58492b1c1526` (`gpt-oss-ctx8k`) and `eb4acf1b6557` (`llama3.2-ctx8k`).
+qwen3:8b, ministral-3:8b and mistral:7b ran with Ollama 0.40.6, so the comparison mixes two
+Ollama versions. Ollama ran qwen3.5:4b with its MLX runner, the other models with its
+llama.cpp runner. A run of qwen3:4b started on 2026-11-26 at 13:17 UTC with Ollama 0.40.6
+(folder `20261126-131720`) no longer exists; it is neither published nor counted.
+granite4:tiny-h, ministral-3:3b and ministral-3:14b were not run. The memory read with
+`ollama ps` is not reported, because its figures did not match the models: 3.3 GB for
+gemma4, whose files take 9.6 GB, and from 6.0 to 9.7 GB for qwen3.5:4b during its run.
+
 ## Conditions
 
 Same Mac (MacBook Pro Mac14,5, Apple M2 Max, 12 CPU cores, 30 GPU cores, 32 GB); one model
